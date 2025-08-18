@@ -9,19 +9,24 @@ from core.db_manager import DatabaseManager
 from src.services.authapi import AuthAPI
 from src.Config.config import load_config
 
-config = load_config(".env")
-auth_api = AuthAPI(secret_key=config.jwt.secret_key)
 
-app = FastAPI()
-app.include_router(auth_api.get_router())
+async def main():
+    config = load_config(".env")
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
-)
-logger = logging.getLogger(__name__)
+    db_manager = DatabaseManager()
+    await db_manager.initialize()
 
-if __name__ == '__main__':
-    print("Starting MAIN...")
+    auth_api = AuthAPI(
+        secret_key=config.jwt.secret_key,
+        db_manager=db_manager
+    )
 
+    app = FastAPI()
+    app.include_router(auth_api.get_router())
+
+    return app
+
+if __name__ == "__main__":
+    app = asyncio.run(main())
     uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
+
