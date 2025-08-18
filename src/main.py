@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 
 from core.db_manager import DatabaseManager
-from src.services.api import AuthAPI
+from src.services.authapi import AuthAPI
 from src.Config.config import load_config
 
 config = load_config(".env")
@@ -23,4 +23,5 @@ logger = logging.getLogger(__name__)
 
 if __name__ == '__main__':
     print("Starting MAIN...")
+
     uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
