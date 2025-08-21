@@ -43,6 +43,25 @@ class UserGateway(BaseUserGateway):
                 self.logger.error(f"Error creating user: {e}")
                 raise
 
+    async def get_user_by_id(self, user_id: int) -> UserDomain | None:
+        async with self.db_manager.session() as session:
+            try:
+                stmt = select(User).where(User.id == user_id)
+                result = await session.execute(stmt)
+                user = result.scalars().first()
+                if user:
+                    return UserDomain(
+                        id=user.id,
+                        name=user.name,
+                        hashed_password=user.hashed_password,
+                        public_key=user.public_key
+                    )
+                else:
+                    return None
+            except Exception as e:
+                self.logger.error(f"Error getting user by id: %s", e)
+                return None
+                
     async def get_user_by_name(self, name: str) -> UserDomain | None:
         async with self.db_manager.session() as session:
             try:
@@ -277,4 +296,5 @@ class KeyExchangeGateway(BaseKeyExchangeGateway):
                 return True
             except Exception as e:
                 self.logger.error(f"Error updating public key: {e}")
+
                 return False
