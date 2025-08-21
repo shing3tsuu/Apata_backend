@@ -38,4 +38,13 @@ class UserDomain(BaseModel):
     id: int
     name: str
     hashed_password: str
+
     public_key: Optional[str] = None
+
+class UserResponse(BaseModel):
+    id: int
+    name: str
+    public_key: Optional[str] = None
+
+    class Config:
+        from_attributes = True
