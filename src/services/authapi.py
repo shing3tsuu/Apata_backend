@@ -4,10 +4,12 @@ from jose import jwt, JWTError
 from datetime import datetime, timedelta
 import logging
 import base64
+import asyncio
 from abc import ABC, abstractmethod
 
 from src.core.gateways import UserGateway, KeyExchangeGateway
 from src.core.db_manager import DatabaseManager
+from src.hashing.password_hash import PasswordHash
 
 from .api_models import *
 
@@ -61,9 +63,10 @@ class BaseAuthAPI(ABC):
 
 class AuthAPI(BaseAuthAPI):
     def __init__(
-            self,
-            secret_key: str,
-            db_manager: DatabaseManager | None = None,
+        self,
+        secret_key: str,
+        db_manager: DatabaseManager | None = None,
+        password_hasher: PasswordHash | None = None
     ):
         self.SECRET_KEY = secret_key
         self.ALGORITHM: str = "HS256"
@@ -72,6 +75,7 @@ class AuthAPI(BaseAuthAPI):
         self.db_manager = db_manager or DatabaseManager()
         self.user_gateway = UserGateway(self.db_manager)
         self.key_gateway = KeyExchangeGateway(self.db_manager)
+        self.password_hasher = password_hasher or PasswordHash()
 
         self.oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
@@ -120,9 +124,11 @@ class AuthAPI(BaseAuthAPI):
                     detail="Username already exists"
                 )
 
+            hashed_password = await self.password_hasher.hashing(user_data.password)
+
             user = await self.user_gateway.create_user(
                 name=user_data.username,
-                hashed_password=user_data.password,
+                hashed_password=hashed_password,  # Сохраняем хеш
                 public_key=user_data.public_key
             )
 
@@ -131,13 +137,24 @@ class AuthAPI(BaseAuthAPI):
         @self.auth_router.post("/login", response_model=dict)
         async def login(form_data: OAuth2PasswordRequestForm = Depends()):
             user = await self.user_gateway.get_user_by_name(form_data.username)
-            if not user:
+            valid_password: bool = False
+
+            if user:
+                valid_password = await self.password_hasher.compare(
+                    form_data.password,
+                    user.hashed_password
+                )
+            else:
+                await asyncio.sleep(0.2)
+                valid_password = False
+
+            if not user or not valid_password:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Invalid credentials"
                 )
 
-            if not await self.password_manager.compare(form_data.password, user.hashed_password):
+            if not await self.password_hasher.compare(form_data.password, user.hashed_password):
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Invalid credentials"
@@ -171,7 +188,7 @@ class AuthAPI(BaseAuthAPI):
                 )
             return {"status": "public key updated"}
 
-        @self.auth_router.get("/me", response_model=UserDomain)
+        @self.auth_router.get("/me", response_model=UserResponse)
         async def get_current_user_info(
                 token: str = Depends(self.oauth2_scheme)
         ):
@@ -182,4 +199,8 @@ class AuthAPI(BaseAuthAPI):
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="User not found"
                 )
-            return user
+            return UserResponse(
+                id=user.id,
+                name=user.name,
+                public_key=user.public_key
+            )
