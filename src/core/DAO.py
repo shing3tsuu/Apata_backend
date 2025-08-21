@@ -21,10 +21,27 @@ class BaseUserGateway(ABC):
         raise NotImplementedError()
 
     @abstractmethod
+    async def get_user_by_id(
+            self,
+            user_id: int
+    ) -> UserDomain | None:
+        """
+        Get user by user.id
+        :param user_id:
+        :return:
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
     async def get_user_by_name(
             self,
             name: str
     ) -> UserDomain | None:
+        """
+        Get user by User.name
+        :param name:
+        :return:
+        """
         raise NotImplementedError()
 
 
@@ -163,4 +180,5 @@ class BaseKeyExchangeGateway(ABC):
         :param public_key:
         :return:
         """
+
         raise NotImplementedError()
