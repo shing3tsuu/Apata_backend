@@ -1,36 +1,57 @@
 Backend Service - Secure Messenger API
 Overview
 
-A secure FastAPI-based backend service for an end-to-end encrypted messaging platform. This service acts as a temporary message relay and authentication hub, ensuring that sensitive message content never persists on the server in readable form.
-Architecture Diagram
+A secure, lightweight backend API for an end-to-end encrypted messaging platform built with FastAPI and PostgreSQL. This service acts as a temporary message relay and authentication provider while maintaining zero knowledge of message contents.
+Architecture Overview
 text
 
-Client Apps → HTTPS/TLS → FastAPI Server → PostgreSQL Database
-     ↑          (JWT)          ↓               ↓
-     └── Message Sync ←── Temporary Storage (7 days)
+┌─────────────────┐    HTTPS/TLS     ┌────────────────────┐
+│   Mobile/Desktop│ ◄──────────────► │   Backend API      │
+│   Client        │                  │  (FastAPI + PostgreSQL)
+│   (Flet + SQLite)│                  │                    │
+└─────────────────┘                  └────────────────────┘
+      │ 1. Encrypt & Send                   │ 2. Store Temp
+      │ 3. Retrieve & Decrypt               │ 4. Auth & Manage
+      │                                     │
+┌─────────────────┐                  ┌────────────────────┐
+│   Local SQLite  │                  │   PostgreSQL       │
+│   (Encrypted)   │                  │   (Messages 7 days)│
+└─────────────────┘                  └────────────────────┘
 
 Key Features
 
-    JWT Authentication - Secure user authentication with token-based sessions
+    Zero-Knowledge Architecture: Server never has access to decrypted message content
 
-    Temporary Message Storage - Messages are automatically purged after 7 days
+    JWT Authentication: Secure token-based authentication system
 
-    Public Key Management - Stores users' public keys for initial message exchange
+    Temporary Message Storage: Messages automatically purged after 7 days
 
-    RESTful API - Clean, standardized API endpoints for all operations
+    Public Key Infrastructure: Secure exchange of encryption keys
 
-    PostgreSQL Database - Relational database with proper indexing and constraints
+    RESTful API: Clean, well-documented endpoints for easy integration
+
+Technology Stack
+
+    Framework: FastAPI with Python 3.10+
+
+    Database: PostgreSQL with SQLAlchemy ORM
+
+    Authentication: JWT tokens with OAuth2 password flow
+
+    Security: BCrypt password hashing, HTTPS enforcement
+
+    Deployment: Docker container ready with Uvicorn ASGI server
 
 API Endpoints
-Authentication Endpoints
+Authentication
 
-    POST /register - Register new user with public key
+    POST /register - Create new user account
 
-    POST /login - Authenticate user and receive JWT token
+    POST /login - Obtain authentication token
 
     GET /me - Get current user information
 
-Message Endpoints
+Messages
 
     POST /messages - Send encrypted message to recipient
 
@@ -38,71 +59,57 @@ Message Endpoints
 
     PUT /messages/{id}/delivered - Confirm message delivery
 
-Key Management Endpoints
+Key Management
 
     GET /public-key/{user_id} - Retrieve user's public key
 
     PUT /update-key - Update user's public key
 
-Security Implementation
+Data Flow
 
-    JWT Tokens - Stateless authentication with short-lived tokens
+    Registration: User creates account with public key
 
-    Password Hashing - BCrypt with proper salt and work factors
+    Authentication: User logs in to receive JWT token
 
-    Input Validation - Pydantic models for all request/response objects
+    Message Send: Client encrypts message and sends to server
 
-    CORS Protection - Configured for specific origins only
+    Message Retrieval: Client periodically checks for new messages
 
-    Rate Limiting - Protection against brute force attacks
+    Delivery Confirmation: Client confirms receipt to allow server cleanup
 
-Database Schema
-Users Table
+Security Model
 
-    id - Primary key
+    All messages encrypted client-side before transmission
 
-    name - Unique username
+    Server stores messages for limited time (7 days)
 
-    hashed_password - Securely hashed password
+    Passwords hashed with BCrypt (12 rounds)
 
-    public_key - PEM-formatted public key
+    JWT tokens expire after 30 minutes
 
-Messages Table
+    Rate limiting on authentication endpoints
 
-    id - Primary key
+    CORS configured for specific origins
 
-    sender_id - Foreign key to users
+Deployment
+bash
 
-    recipient_id - Foreign key to users
+# Environment variables
+SECRET_KEY=your-super-secret-jwt-key
+DATABASE_URL=postgresql://user:pass@host:port/dbname
 
-    encrypted_data - Binary encrypted message content
+# Run with Docker
+docker build -t messenger-api .
+docker run -p 8000:8000 --env-file .env messenger-api
 
-    timestamp - Message creation time
+Development Setup
+bash
 
-    is_delivered - Delivery status flag
+# Install dependencies
+pip install -r requirements.txt
 
-    expires_at - Automatic expiration timestamp
+# Setup database
+alembic upgrade head
 
-Deployment Considerations
-
-    Environment Variables - All configuration through environment variables
-
-    Docker Ready - Containerized deployment support
-
-    Health Checks - API endpoints for service health monitoring
-
-    Logging - Structured logging for easy debugging
-
-    Monitoring - Prometheus metrics endpoint
-
-Getting Started
-
-    Set up PostgreSQL database
-
-    Configure environment variables
-
-    Install dependencies: pip install -r requirements.txt
-
-    Run database migrations
-
-    Start server: uvicorn main:app --reload
+# Run development server
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
