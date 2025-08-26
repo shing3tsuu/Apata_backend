@@ -1,14 +1,13 @@
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine, AsyncEngine
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Optional
 from sqlalchemy.pool import NullPool
 import sqlalchemy as db
 import logging
 import os
-import logging
 
-from src.Config.config import load_config
-from src.core.database import Base
+from src.config import load_config
+from .database import Base
 
 class BaseDatabaseManager:
     def __init__(self, logger: logging.Logger | None = None):
@@ -48,23 +47,16 @@ class BaseDatabaseManager:
 
 class DatabaseManager(BaseDatabaseManager):
     async def initialize(self):
-        db_path = self.config.db.path or "sqlite.db"
-
-        if db_path != ":memory:":
-            db_path = os.path.abspath(db_path)
-            dir_path = os.path.dirname(db_path)
-            if dir_path and not os.path.exists(dir_path):
-                os.makedirs(dir_path, exist_ok=True)
-                self.logger.info(f"Created database directory: {dir_path}")
-
         self.engine = create_async_engine(
-            f"sqlite+aiosqlite:///{db_path}",
+            url=f"postgresql+asyncpg://{self.config.db.user}:{self.config.db.password}@{self.config.db.host}:{self.config.db.port}/{self.config.db.name}",
             echo=True,
-            connect_args={"check_same_thread": False},
-            poolclass=NullPool
+            pool_size=5,
+            max_overflow=10,
+            pool_pre_ping=True
         )
+
         self.session_factory = async_sessionmaker(
             bind=self.engine,
             class_=AsyncSession,
-            expire_on_commit=False
+            expire_on_commit=False,
         )
