@@ -10,11 +10,11 @@ from functools import wraps
 from typing import Callable, Optional
 import logging
 
-from src.core.database import User, Message, Contact
-from src.core.DAO import BaseUserGateway, BaseMessageGateway, BaseContactGateway, BaseKeyExchangeGateway
-from src.core.DTO import UserDomain, ContactDomain, MessageDomain
-from src.Config.config import load_config
-from src.core.db_manager import DatabaseManager
+from .database import User, Message
+from .dao import BaseUserGateway, BaseMessageGateway, BaseKeyExchangeGateway
+from .dto import UserDTO, MessageDTO
+from src.config import load_config
+from .db_manager import DatabaseManager
 
 class UserGateway(BaseUserGateway):
     __slots__ = "db_manager"
@@ -23,7 +23,7 @@ class UserGateway(BaseUserGateway):
         self.db_manager = db_manager
         self.logger = logger or logging.getLogger(__name__)
 
-    async def create_user(self, name: str, hashed_password: str, public_key: str) -> UserDomain:
+    async def create_user(self, name: str, hashed_password: str, public_key: str) -> UserDTO:
         async with self.db_manager.session() as session:
             try:
                 stmt = insert(User).values(
@@ -33,7 +33,7 @@ class UserGateway(BaseUserGateway):
                 ).returning(User)
                 result = await session.execute(stmt)
                 user = result.scalars().first()
-                return UserDomain(
+                return UserDTO(
                     id=user.id,
                     name=user.name,
                     hashed_password=user.hashed_password,
@@ -43,14 +43,14 @@ class UserGateway(BaseUserGateway):
                 self.logger.error(f"Error creating user: {e}")
                 raise
 
-    async def get_user_by_id(self, user_id: int) -> UserDomain | None:
+    async def get_user_by_id(self, user_id: int) -> UserDTO | None:
         async with self.db_manager.session() as session:
             try:
                 stmt = select(User).where(User.id == user_id)
                 result = await session.execute(stmt)
                 user = result.scalars().first()
                 if user:
-                    return UserDomain(
+                    return UserDTO(
                         id=user.id,
                         name=user.name,
                         hashed_password=user.hashed_password,
@@ -61,15 +61,15 @@ class UserGateway(BaseUserGateway):
             except Exception as e:
                 self.logger.error(f"Error getting user by id: %s", e)
                 return None
-                
-    async def get_user_by_name(self, name: str) -> UserDomain | None:
+
+    async def get_user_by_name(self, name: str) -> UserDTO | None:
         async with self.db_manager.session() as session:
             try:
                 stmt = select(User).where(User.name == name)
                 result = await session.execute(stmt)
                 user = result.scalars().first()
                 if user:
-                    return UserDomain(
+                    return UserDTO(
                         id=user.id,
                         name=user.name,
                         hashed_password=user.hashed_password,
@@ -93,58 +93,6 @@ class UserGateway(BaseUserGateway):
                 self.logger.error("Error updating public key: %s", e)
                 return False
 
-class ContactGateway(BaseContactGateway):
-    __slots__ = "db_manager"
-
-    def __init__(self, db_manager: DatabaseManager, logger: logging.Logger | None = None):
-        self.db_manager = db_manager
-        self.logger = logger or logging.getLogger(__name__)
-
-    async def create_contact(self, owner_id: int, contact_id: int) -> ContactDomain:
-        async with self.db_manager.session() as session:
-            try:
-                stmt = insert(Contact).values(
-                    owner_id=owner_id,
-                    contact_id=contact_id
-                ).returning(Contact)
-                result = await session.execute(stmt)
-                contact = result.scalars().first()
-                return ContactDomain(
-                    id=contact.id,
-                    owner_id=contact.owner_id,
-                    contact_id=contact.contact_id
-                )
-            except Exception as e:
-                self.logger.error("Error creating contact: %s", e)
-                raise
-
-    async def delete_contact(self, contact_id: int) -> bool:
-        async with self.db_manager.session() as session:
-            try:
-                stmt = delete(Contact).where(Contact.id == contact_id)
-                await session.execute(stmt)
-                return True
-            except Exception as e:
-                self.logger.error("Error deleting contact: %s", e)
-                return False
-
-    async def get_contacts(self, owner_id: int) -> list[ContactDomain]:
-        async with self.db_manager.session() as session:
-            try:
-                stmt = select(Contact).where(Contact.owner_id == owner_id)
-                result = await session.execute(stmt)
-                contacts = result.scalars().all()
-                return [
-                    ContactDomain(
-                        id=c.id,
-                        owner_id=c.owner_id,
-                        contact_id=c.contact_id
-                    ) for c in contacts
-                ]
-            except Exception as e:
-                self.logger.error("Error getting contacts: %s", e)
-                return []
-
 class MessageGateway(BaseMessageGateway):
     __slots__ = "db_manager"
 
@@ -152,13 +100,8 @@ class MessageGateway(BaseMessageGateway):
         self.db_manager = db_manager
         self.logger = logger or logging.getLogger(__name__)
 
-    async def create_message(
-            self,
-            sender_id: int,
-            recipient_id: int,
-            message: bytes,
-            encryption_version: int
-            ) -> MessageDomain:
+    async def create_message(self, sender_id: int, recipient_id: int, message: bytes, encryption_version: int)\
+            -> MessageDTO:
         async with self.db_manager.session() as session:
             try:
                 stmt = insert(Message).values(
@@ -169,7 +112,7 @@ class MessageGateway(BaseMessageGateway):
                 ).returning(Message)
                 result = await session.execute(stmt)
                 msg = result.scalars().first()
-                return MessageDomain(
+                return MessageDTO(
                     id=msg.id,
                     sender_id=msg.sender_id,
                     recipient_id=msg.recipient_id,
@@ -182,7 +125,7 @@ class MessageGateway(BaseMessageGateway):
                 self.logger.error("Error creating message: %s", e)
                 raise
 
-    async def get_undelivered_messages(self, recipient_id: int) -> list[MessageDomain]:
+    async def get_undelivered_messages(self, recipient_id: int) -> list[MessageDTO]:
         async with self.db_manager.session() as session:
             try:
                 stmt = select(Message).where(
@@ -192,7 +135,7 @@ class MessageGateway(BaseMessageGateway):
                 result = await session.execute(stmt)
                 messages = result.scalars().all()
                 return [
-                    MessageDomain(
+                    MessageDTO(
                         id=m.id,
                         sender_id=m.sender_id,
                         recipient_id=m.recipient_id,
@@ -218,14 +161,14 @@ class MessageGateway(BaseMessageGateway):
                 self.logger.error("Error marking message delivered: %s", e)
                 return False
 
-    async def get_message_by_id(self, message_id: int) -> MessageDomain | None:
+    async def get_message_by_id(self, message_id: int) -> MessageDTO | None:
         async with self.db_manager.session() as session:
             try:
                 stmt = select(Message).where(Message.id == message_id)
                 result = await session.execute(stmt)
                 msg = result.scalars().first()
                 if msg:
-                    return MessageDomain(
+                    return MessageDTO(
                         id=msg.id,
                         sender_id=msg.sender_id,
                         recipient_id=msg.recipient_id,
@@ -239,12 +182,7 @@ class MessageGateway(BaseMessageGateway):
                 self.logger.error(f"Error getting message by ID: {e}")
                 return None
 
-    async def get_conversation_history(
-            self,
-            user1_id: int,
-            user2_id: int,
-            limit: int = 100
-    ) -> list[MessageDomain]:
+    async def get_conversation_history(self, user1_id: int, user2_id: int, limit: int = 100) -> list[MessageDTO]:
         async with self.db_manager.session() as session:
             try:
                 stmt = select(Message).where(
@@ -255,7 +193,7 @@ class MessageGateway(BaseMessageGateway):
                 result = await session.execute(stmt)
                 messages = result.scalars().all()
                 return [
-                    MessageDomain(
+                    MessageDTO(
                         id=m.id,
                         sender_id=m.sender_id,
                         recipient_id=m.recipient_id,
