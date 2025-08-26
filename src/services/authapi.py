@@ -14,54 +14,7 @@ from src.hashing.password_hash import PasswordHash
 from .api_models import *
 
 
-class BaseAuthAPI(ABC):
-    @property
-    @abstractmethod
-    def auth_router(
-            self
-    ) -> APIRouter:
-        """
-        router for authentication
-        :return:
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def get_router(
-            self
-    ) -> APIRouter:
-        """
-        get router
-        :return:
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def create_access_token(
-            self,
-            user_id: int
-    ) -> str:
-        """
-        create access token
-        :param user_id:
-        :return:
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    async def get_current_user(
-            self,
-            token: str
-    ) -> int:
-        """
-        get current user
-        :param token:
-        :return:
-        """
-        raise NotImplementedError
-
-
-class AuthAPI(BaseAuthAPI):
+class AuthAPI:
     def __init__(
         self,
         secret_key: str,
@@ -128,7 +81,7 @@ class AuthAPI(BaseAuthAPI):
 
             user = await self.user_gateway.create_user(
                 name=user_data.username,
-                hashed_password=hashed_password,  # Сохраняем хеш
+                hashed_password=hashed_password,
                 public_key=user_data.public_key
             )
 
@@ -137,7 +90,7 @@ class AuthAPI(BaseAuthAPI):
         @self.auth_router.post("/login", response_model=dict)
         async def login(form_data: OAuth2PasswordRequestForm = Depends()):
             user = await self.user_gateway.get_user_by_name(form_data.username)
-            valid_password: bool = False
+            valid_password = False
 
             if user:
                 valid_password = await self.password_hasher.compare(
