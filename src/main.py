@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 
 from core.db_manager import DatabaseManager
 from src.services.authapi import AuthAPI
-from src.Config.config import load_config
+from src.config import load_config
 
 
 async def main():
@@ -27,7 +27,11 @@ async def main():
     return app
 
 if __name__ == "__main__":
-    app = asyncio.run(main())
-    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
-
+    try:
+        app = asyncio.run(main())
+        uvicorn.run(app, log_level="info")
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.error(e, exc_info=True)
+        raise
 
