@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 
 from core.db_manager import DatabaseManager
-from src.services.authapi import AuthAPI
+from src.services.auth_api import AuthAPI
 from src.config import load_config
 
 
@@ -34,4 +34,3 @@ if __name__ == "__main__":
         logger = logging.getLogger(__name__)
         logger.error(e, exc_info=True)
         raise
-
