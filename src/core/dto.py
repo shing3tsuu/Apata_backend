@@ -5,7 +5,6 @@ from typing import List
 class UserDTO(BaseModel):
     id: int
     name: str = constr(min_length=1, max_length=50)
-    hashed_password: str
     public_key: str | None = None
 
 class MessageDTO(BaseModel):
@@ -16,3 +15,4 @@ class MessageDTO(BaseModel):
     timestamp: datetime
     is_delivered: bool
     encryption_version: int
+
