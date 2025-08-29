@@ -43,7 +43,7 @@ class UserDomain(BaseModel):
 class UserResponse(BaseModel):
     id: int
     name: str
-    public_key: str = Field(..., min_length=100, pattern="^-----BEGIN PUBLIC KEY-----") | None # Base64-encoded public key
+    public_key: Optional[str] # Base64-encoded public key
 
     class Config:
 
