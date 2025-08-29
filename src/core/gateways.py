@@ -23,12 +23,11 @@ class UserGateway(BaseUserGateway):
         self.db_manager = db_manager
         self.logger = logger or logging.getLogger(__name__)
 
-    async def create_user(self, name: str, hashed_password: str, public_key: str) -> UserDTO:
+    async def create_user(self, name: str, public_key: str) -> UserDTO:
         async with self.db_manager.session() as session:
             try:
                 stmt = insert(User).values(
                     name=name,
-                    hashed_password=hashed_password,
                     public_key=public_key
                 ).returning(User)
                 result = await session.execute(stmt)
@@ -36,7 +35,6 @@ class UserGateway(BaseUserGateway):
                 return UserDTO(
                     id=user.id,
                     name=user.name,
-                    hashed_password=user.hashed_password,
                     public_key=user.public_key
                 )
             except Exception as e:
@@ -53,7 +51,6 @@ class UserGateway(BaseUserGateway):
                     return UserDTO(
                         id=user.id,
                         name=user.name,
-                        hashed_password=user.hashed_password,
                         public_key=user.public_key
                     )
                 else:
@@ -72,7 +69,6 @@ class UserGateway(BaseUserGateway):
                     return UserDTO(
                         id=user.id,
                         name=user.name,
-                        hashed_password=user.hashed_password,
                         public_key=user.public_key
                         )
                 else:
@@ -236,3 +232,4 @@ class KeyExchangeGateway(BaseKeyExchangeGateway):
                 self.logger.error(f"Error updating public key: {e}")
 
                 return False
+
