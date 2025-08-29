@@ -8,13 +8,11 @@ class BaseUserGateway(ABC):
     async def create_user(
             self,
             name: str,
-            hashed_password: str,
             public_key: str | None
     ) -> UserDTO:
         """
         Creates a new user in the database.
         :param name:
-        :param hashed_password:
         :param public_key:
         :return:
         """
@@ -143,3 +141,4 @@ class BaseKeyExchangeGateway(ABC):
         """
 
         raise NotImplementedError()
+
