@@ -1,9 +1,6 @@
 from pydantic import BaseModel, constr, Field
 from typing import Optional
 
-from pydantic import BaseModel, constr, Field
-from typing import Optional
-
 class UserCreateDTO(BaseModel):
     username: str = Field(..., min_length=3, max_length=50, pattern="^[a-zA-Z0-9_]+$")
 
@@ -49,4 +46,5 @@ class UserResponse(BaseModel):
     public_key: str = Field(..., min_length=100, pattern="^-----BEGIN PUBLIC KEY-----") | None # Base64-encoded public key
 
     class Config:
+
         from_attributes = True
