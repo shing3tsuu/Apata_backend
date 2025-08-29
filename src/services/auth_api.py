@@ -1,0 +1,290 @@
+from fastapi import FastAPI, status, HTTPException, Depends, APIRouter
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from jose import jwt, JWTError
+from datetime import datetime, timedelta, timezone
+import logging
+import base64
+import asyncio
+import secrets
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives import hashes
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.backends import default_backend
+
+from src.core.gateways import UserGateway, KeyExchangeGateway
+from src.core.db_manager import DatabaseManager
+
+from .auth_api_models import *
+
+
+class AuthAPI:
+    """
+    Main authentication API class handling user registration, authentication, and key management like WebAuthn.
+    """
+
+    def __init__(
+            self,
+            secret_key: str,
+            db_manager: DatabaseManager | None = None,
+    ):
+        """
+        Initialize AuthAPI with configuration and dependencies
+
+        Args:
+            secret_key: Secret key for JWT token signing
+            db_manager: Database manager instance (optional)
+        """
+        self.SECRET_KEY = secret_key
+        self.ALGORITHM: str = "HS256"
+        self.ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+        self.CHALLENGE_EXPIRE_MINUTES: int = 5
+
+        self.db_manager = db_manager or DatabaseManager()
+        self.user_gateway = UserGateway(self.db_manager)
+        self.key_gateway = KeyExchangeGateway(self.db_manager)
+
+        # Temporary challenge storage (use Redis in production)
+        self.challenges = {}
+
+        self.oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
+        self._auth_router = APIRouter(tags=["Authentication"])
+        self._register_endpoints()
+
+    @property
+    def auth_router(self) -> APIRouter:
+        """
+        Get the authentication router instance
+        """
+        return self._auth_router
+
+    def get_router(self) -> APIRouter:
+        """
+        Get the authentication router instance (alias for auth_router)
+        """
+        return self._auth_router
+
+    def create_access_token(self, user_id: int) -> str:
+        """
+        Create JWT access token for authenticated user
+        Args: user_id: User identifier to include in token
+        Returns: str: Encoded JWT token
+        """
+        expires_delta = timedelta(minutes=self.ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.utcnow() + expires_delta
+
+        payload = {"sub": str(user_id),"exp": expire}
+        return jwt.encode(payload, self.SECRET_KEY, algorithm=self.ALGORITHM)
+
+    async def get_current_user(self, token: str) -> int:
+        """
+        Validate JWT token and extract user ID
+        Args: token: JWT token from authorization header
+        Returns: int: User ID extracted from token
+        """
+        try:
+            payload = jwt.decode(token, self.SECRET_KEY, algorithms=[self.ALGORITHM])
+            user_id = payload.get("sub")
+            if user_id is None:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid authentication credentials",
+                )
+            return int(user_id)
+        except (JWTError, ValueError) as e:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token",
+            ) from e
+
+    @staticmethod
+    def _verify_signature(public_key_pem: str, challenge: str, signature: str) -> bool:
+        """
+        Verify ECDSA signature using user's public key
+        Args:
+            public_key_pem: PEM-formatted public key
+            challenge: Original challenge string that was signed
+            signature: Base64-encoded signature to verify
+        Returns: bool: True if signature is valid, False otherwise
+        """
+        try:
+            public_key = serialization.load_pem_public_key(
+                public_key_pem.encode(),
+                backend=default_backend()
+            )
+
+            # Decode signature from base64
+            signature_bytes = base64.b64decode(signature)
+
+            # Verify signature using ECDSA with SHA256
+            public_key.verify(
+                signature_bytes,
+                challenge.encode(),
+                ec.ECDSA(hashes.SHA256())
+            )
+            return True
+        except (InvalidSignature, ValueError):
+            return False
+
+    def _register_endpoints(self):
+        """
+        Register all authentication endpoints with the router
+        """
+
+        @self.auth_router.post("/register", status_code=status.HTTP_201_CREATED)
+        async def register(user_data: UserRegisterRequest):
+            """
+            Register new user with public key
+            Args: user_data: User registration data containing username and public key
+            Returns: dict: Created user's ID and username
+            """
+            if await self.user_gateway.get_user_by_name(user_data.username):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Username already exists"
+                )
+
+            user = await self.user_gateway.create_user(
+                name=user_data.username,
+                public_key=user_data.public_key
+            )
+
+            return {"id": user.id, "username": user.name}
+
+        @self.auth_router.get("/challenge/{username}")
+        async def get_challenge(username: str):
+            """
+            Request authentication challenge for user
+            Args: username: Username to generate challenge for
+            Returns: dict: Generated challenge and expiration time
+            """
+            user = await self.user_gateway.get_user_by_name(username)
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="User not found"
+                )
+
+            # Generate random challenge
+            challenge = secrets.token_urlsafe(32)
+            expires = datetime.utcnow() + timedelta(minutes=self.CHALLENGE_EXPIRE_MINUTES)
+
+            # Store challenge in temporary storage
+            self.challenges[username] = {
+                "challenge": challenge,
+                "expires": expires,
+                "user_id": user.id
+            }
+
+            return {"challenge": challenge, "expires": expires.isoformat()}
+
+        @self.auth_router.post("/login", response_model=dict)
+        async def login(login_data: ChallengeLoginRequest):
+            """
+            Authenticate user using signed challenge
+            Args: login_data: Login request containing username and signature
+            Returns: dict: JWT access token
+            """
+            # Check if challenge exists
+            if login_data.username not in self.challenges:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Challenge not found or expired"
+                )
+
+            challenge_data = self.challenges[login_data.username]
+
+            # Check challenge expiration
+            if datetime.now(timezone.utc)  > challenge_data["expires"]:
+                del self.challenges[login_data.username]
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Challenge expired"
+                )
+
+            # Get user and public key
+            user = await self.user_gateway.get_user_by_name(login_data.username)
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="User not found"
+                )
+
+            # Verify signature
+            is_valid = self._verify_signature(
+                user.public_key,
+                challenge_data["challenge"],
+                login_data.signature
+            )
+
+            if not is_valid:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid signature"
+                )
+
+            # Remove used challenge
+            del self.challenges[login_data.username]
+
+            # Create JWT token
+            access_token = self.create_access_token(user.id)
+            return {"access_token": access_token, "token_type": "bearer"}
+
+        @self.auth_router.get("/public-key/{user_id}", response_model=PublicKeyResponse)
+        async def get_public_key(user_id: int):
+            """
+            Retrieve public key for specified user
+            Args: user_id: ID of user to get public key for
+            Returns: PublicKeyResponse: User ID and public key
+            """
+            public_key = await self.key_gateway.get_public_key(user_id)
+            if not public_key:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Public key not found"
+                )
+            return PublicKeyResponse(user_id=user_id, public_key=public_key)
+
+        @self.auth_router.put("/update-key", status_code=status.HTTP_200_OK)
+        async def update_public_key(
+                key_data: PublicKeyUpdateDTO,
+                token: str = Depends(self.oauth2_scheme)
+        ):
+            """
+            Update authenticated user's public key
+            Args:
+                key_data: New public key data
+                token: JWT authentication token
+            Returns: dict: Success status
+            """
+            user_id = await self.get_current_user(token)
+            success = await self.key_gateway.update_public_key(user_id, key_data.public_key)
+            if not success:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to update public key"
+                )
+            return {"status": "public key updated"}
+
+        @self.auth_router.get("/me", response_model=UserResponse)
+        async def get_current_user_info(
+                token: str = Depends(self.oauth2_scheme)
+        ):
+            """
+            Get current authenticated user's information
+            Args: token: JWT authentication token
+            Returns: UserResponse: User information
+            """
+            user_id = await self.get_current_user(token)
+            user = await self.user_gateway.get_user_by_id(user_id)
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="User not found"
+                )
+            return UserResponse(
+                id=user.id,
+                name=user.name,
+                public_key=user.public_key
+            )
