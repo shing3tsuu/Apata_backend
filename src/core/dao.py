@@ -8,12 +8,14 @@ class BaseUserGateway(ABC):
     async def create_user(
             self,
             name: str,
-            public_key: str | None
+            ecdsa_public_key: str | None,
+            ecdh_public_key: str | None
     ) -> UserDTO:
         """
         Creates a new user in the database.
         :param name:
-        :param public_key:
+        :param ecdsa_public_key:
+        :param ecdh_public_key
         :return:
         """
         raise NotImplementedError()
@@ -116,29 +118,28 @@ class BaseMessageGateway(ABC):
 
 class BaseKeyExchangeGateway(ABC):
     @abstractmethod
-    async def get_public_key(
+    async def get_ecdsa_public_key(
             self,
             user_id: int
     ) -> str | None:
         """
-        Gets the public key for a user.
+        Gets the ecdsa public key for a user.
         :param user_id:
         :return:
         """
         raise NotImplementedError()
 
     @abstractmethod
-    async def update_public_key(
+    async def update_ecdsa_public_key(
             self,
             user_id: int,
-            public_key: str
+            ecdsa_public_key: str
     ) -> bool:
         """
-        Updates the public key for a user.
+        Updates the ecdsa public key for a user.
         :param user_id:
-        :param public_key:
+        :param ecdsa_public_key:
         :return:
         """
 
         raise NotImplementedError()
-
