@@ -5,6 +5,10 @@ class UserCreateDTO(BaseModel):
     username: str = Field(..., min_length=3, max_length=50, pattern="^[a-zA-Z0-9_]+$")
 
 class PublicKeyUpdateDTO(BaseModel):
+    """
+    # Development notes: keys are not changing yet, in future PFS (perfect forward secrecy) needs to be implemented
+    # Development notes: add validation for keys
+    """
     ecdsa_public_key: str
     ecdh_public_key: str | None = None
 
