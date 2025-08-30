@@ -27,16 +27,20 @@ class AuthAPI:
             self,
             secret_key: str,
             db_manager: DatabaseManager | None = None,
+            logger: logging.Logger | None = None
     ):
         """
         Initialize AuthAPI with configuration and dependencies
-
         Args:
             secret_key: Secret key for JWT token signing
             db_manager: Database manager instance (optional)
+            logger: Custom logger instance (optional)
         """
+        self.logger = logger or logging.getLogger(__name__)
+
         self.SECRET_KEY = secret_key
-        self.ALGORITHM: str = "HS256"
+        self.ALGORITHM= "HS256" # could replace on RS256
+
         self.ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
         self.CHALLENGE_EXPIRE_MINUTES: int = 5
 
@@ -44,7 +48,7 @@ class AuthAPI:
         self.user_gateway = UserGateway(self.db_manager)
         self.key_gateway = KeyExchangeGateway(self.db_manager)
 
-        # CRUTCH, REPLACE ON REDIS 
+        # CRUTCH, REPLACE ON REDIS AT THE FIRST OPPORTUNITY
         self.challenges = {}
 
         self.oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
@@ -71,11 +75,15 @@ class AuthAPI:
         Args: user_id: User identifier to include in token
         Returns: str: Encoded JWT token
         """
-        expires_delta = timedelta(minutes=self.ACCESS_TOKEN_EXPIRE_MINUTES)
-        expire = datetime.utcnow() + expires_delta
+        try:
+            expires_delta = timedelta(minutes=self.ACCESS_TOKEN_EXPIRE_MINUTES)
+            expire = datetime.utcnow() + expires_delta
 
-        payload = {"sub": str(user_id),"exp": expire}
-        return jwt.encode(payload, self.SECRET_KEY, algorithm=self.ALGORITHM)
+            payload = {"sub": str(user_id),"exp": expire}
+            return jwt.encode(payload, self.SECRET_KEY, algorithm=self.ALGORITHM)
+        except Exception as e:
+            self.logger.error("Error creating access token: %s", str(e), exc_info=True)
+            raise
 
     async def get_current_user(self, token: str) -> int:
         """
@@ -97,11 +105,17 @@ class AuthAPI:
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token",
             ) from e
+        except Exception as e:
+            self.logger.critical("Error validating token: %s", str(e), exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Internal server error"
+            )
 
     @staticmethod
     def _verify_signature(public_key_pem: str, challenge: str, signature: str) -> bool:
         """
-        Verify ECDSA signature using user's public key
+        Verify ECDSA signature using user's ecdsa public key
         Args:
             ecdsa_public_key_pem: PEM-formatted ecdsa public key
             challenge: Original challenge string that was signed
@@ -126,17 +140,23 @@ class AuthAPI:
             return True
         except (InvalidSignature, ValueError):
             return False
+        except Exception as e:
+            self.logger.critical("Error verifying signature: %s", str(e), exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Internal server error"
+            )
 
     def _register_endpoints(self):
         """
         Register all authentication endpoints with the router
+        # Development notes: add work with ecdh public key
         """
-
         @self.auth_router.post("/register", status_code=status.HTTP_201_CREATED)
         async def register(user_data: UserRegisterRequest):
             """
-            Register new user with public key
-            Args: user_data: User registration data containing username and public key
+            Register new user with public keys (ecdsa and ecdh)
+            Args: user_data: User registration data containing username and public keys
             Returns: dict: Created user's ID and username
             """
             if await self.user_gateway.get_user_by_name(user_data.username):
@@ -247,7 +267,12 @@ class AuthAPI:
                 )
             return PublicKeyResponse(user_id=user_id, ecdsa_public_key=ecdsa_public_key, ecdh_public_key=None)
 
-        @self.auth_router.put("/update-key", status_code=status.HTTP_200_OK)
+#        @self.auth_router.put("/ecdh-public-key/{user_id}", status_code=status.HTTP_200_OK)
+#        async def get_ecdh_public_key(user_id: int):
+#            # Need to realize
+#            pass
+
+        @self.auth_router.put("/ecdsa-update-key", status_code=status.HTTP_200_OK)
         async def update_ecdsa_public_key(
                 key_data: PublicKeyUpdateDTO,
                 token: str = Depends(self.oauth2_scheme)
@@ -258,6 +283,8 @@ class AuthAPI:
                 key_data: New public key data
                 token: JWT authentication token
             Returns: dict: Success status
+            Development note:
+                In the current implementation of the flet client, this method is not used for its intended purpose.
             """
             user_id = await self.get_current_user(token)
             success = await self.key_gateway.update_ecdsa_public_key(user_id, key_data.ecdsa_public_key)
@@ -267,6 +294,14 @@ class AuthAPI:
                     detail="Failed to update public key"
                 )
             return {"status": "ecdsa public key updated"}
+
+#        @self.auth_router.put("/ecdh-update-key", status_code=status.HTTP_200_OK)
+#        async def update_ecdh_public_key(
+#                key_data: PublicKeyUpdateDTO,
+#                token: str = Depends(self.oauth2_scheme)
+#        ):
+#            # Need to realize
+#            pass
 
         @self.auth_router.get("/me", response_model=UserResponse)
         async def get_current_user_info(
@@ -290,5 +325,3 @@ class AuthAPI:
                 ecdsa_public_key=user.ecdsa_public_key,
                 ecdh_public_key=user.ecdh_public_key
             )
-
-
