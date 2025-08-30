@@ -14,7 +14,8 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(50), unique=True, index=True)
-    public_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ecdsa_public_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ecdh_public_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 class Message(Base):
     __tablename__ = "messages"
@@ -26,4 +27,5 @@ class Message(Base):
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     is_delivered: Mapped[bool] = mapped_column(default=False)
     encryption_version: Mapped[int] = mapped_column(default=1)
+
 
