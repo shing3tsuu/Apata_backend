@@ -44,7 +44,7 @@ class AuthAPI:
         self.user_gateway = UserGateway(self.db_manager)
         self.key_gateway = KeyExchangeGateway(self.db_manager)
 
-        # Temporary challenge storage (use Redis in production)
+        # CRUTCH, REPLACE ON REDIS 
         self.challenges = {}
 
         self.oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
@@ -290,3 +290,4 @@ class AuthAPI:
                 ecdsa_public_key=user.ecdsa_public_key,
                 ecdh_public_key=user.ecdh_public_key
             )
+
