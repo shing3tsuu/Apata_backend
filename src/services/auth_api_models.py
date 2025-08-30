@@ -5,7 +5,8 @@ class UserCreateDTO(BaseModel):
     username: str = Field(..., min_length=3, max_length=50, pattern="^[a-zA-Z0-9_]+$")
 
 class PublicKeyUpdateDTO(BaseModel):
-    public_key: str = Field(..., min_length=100, pattern="^-----BEGIN PUBLIC KEY-----")
+    ecdsa_public_key: str
+    ecdh_public_key: str | None = None
 
 class EncryptedMessageDTO(BaseModel):
     recipient_id: int
@@ -18,7 +19,8 @@ class ContactCreateDTO(BaseModel):
     contact_username: str
 
 class UserRegisterRequest(UserCreateDTO):
-    public_key: str = Field(..., min_length=100, pattern="^-----BEGIN PUBLIC KEY-----")
+    ecdsa_public_key: str
+    ecdh_public_key: str | None = None
 
 class UserRegisterResponse(BaseModel):
     id: int
@@ -26,7 +28,8 @@ class UserRegisterResponse(BaseModel):
 
 class PublicKeyResponse(BaseModel):
     user_id: int
-    public_key: str = Field(..., min_length=100, pattern="^-----BEGIN PUBLIC KEY-----")
+    ecdsa_public_key: str
+    ecdh_public_key: str | None = None
 
 class ChallengeRequest(BaseModel):
     username: str
@@ -38,12 +41,14 @@ class ChallengeLoginRequest(BaseModel):
 class UserDomain(BaseModel):
     id: int
     name: str
-    public_key: Optional[str] = None
+    ecdsa_public_key: str | None = None
+    ecdh_public_key: str | None = None
 
 class UserResponse(BaseModel):
     id: int
     name: str
-    public_key: Optional[str] # Base64-encoded public key
+    ecdsa_public_key: str | None = None
+    ecdh_public_key: str | None = None # Base64-encoded public key
 
     class Config:
 
