@@ -103,13 +103,13 @@ class AuthAPI:
         """
         Verify ECDSA signature using user's public key
         Args:
-            public_key_pem: PEM-formatted public key
+            ecdsa_public_key_pem: PEM-formatted ecdsa public key
             challenge: Original challenge string that was signed
             signature: Base64-encoded signature to verify
         Returns: bool: True if signature is valid, False otherwise
         """
         try:
-            public_key = serialization.load_pem_public_key(
+            ecdsa_public_key = serialization.load_pem_public_key(
                 public_key_pem.encode(),
                 backend=default_backend()
             )
@@ -118,7 +118,7 @@ class AuthAPI:
             signature_bytes = base64.b64decode(signature)
 
             # Verify signature using ECDSA with SHA256
-            public_key.verify(
+            ecdsa_public_key.verify(
                 signature_bytes,
                 challenge.encode(),
                 ec.ECDSA(hashes.SHA256())
@@ -290,4 +290,5 @@ class AuthAPI:
                 ecdsa_public_key=user.ecdsa_public_key,
                 ecdh_public_key=user.ecdh_public_key
             )
+
 
