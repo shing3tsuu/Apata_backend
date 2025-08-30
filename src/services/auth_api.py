@@ -147,7 +147,8 @@ class AuthAPI:
 
             user = await self.user_gateway.create_user(
                 name=user_data.username,
-                public_key=user_data.public_key
+                ecdsa_public_key=user_data.ecdsa_public_key,
+                ecdh_public_key=user_data.ecdh_public_key
             )
 
             return {"id": user.id, "username": user.name}
@@ -196,7 +197,7 @@ class AuthAPI:
             challenge_data = self.challenges[login_data.username]
 
             # Check challenge expiration
-            if datetime.now(timezone.utc)  > challenge_data["expires"]:
+            if datetime.utcnow() > challenge_data["expires"]:
                 del self.challenges[login_data.username]
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -213,7 +214,7 @@ class AuthAPI:
 
             # Verify signature
             is_valid = self._verify_signature(
-                user.public_key,
+                user.ecdsa_public_key,
                 challenge_data["challenge"],
                 login_data.signature
             )
@@ -231,23 +232,23 @@ class AuthAPI:
             access_token = self.create_access_token(user.id)
             return {"access_token": access_token, "token_type": "bearer"}
 
-        @self.auth_router.get("/public-key/{user_id}", response_model=PublicKeyResponse)
-        async def get_public_key(user_id: int):
+        @self.auth_router.get("/ecdsa-public-key/{user_id}", response_model=PublicKeyResponse)
+        async def get_ecdsa_public_key(user_id: int):
             """
-            Retrieve public key for specified user
-            Args: user_id: ID of user to get public key for
-            Returns: PublicKeyResponse: User ID and public key
+            Retrieve ecdsa public key for specified user
+            Args: user_id: ID of user to get ecdsa public key for
+            Returns: PublicKeyResponse: User ID and ecdsa public key
             """
-            public_key = await self.key_gateway.get_public_key(user_id)
-            if not public_key:
+            ecdsa_public_key = await self.key_gateway.get_ecdsa_public_key(user_id)
+            if not ecdsa_public_key:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Public key not found"
                 )
-            return PublicKeyResponse(user_id=user_id, public_key=public_key)
+            return PublicKeyResponse(user_id=user_id, ecdsa_public_key=ecdsa_public_key, ecdh_public_key=None)
 
         @self.auth_router.put("/update-key", status_code=status.HTTP_200_OK)
-        async def update_public_key(
+        async def update_ecdsa_public_key(
                 key_data: PublicKeyUpdateDTO,
                 token: str = Depends(self.oauth2_scheme)
         ):
@@ -259,13 +260,13 @@ class AuthAPI:
             Returns: dict: Success status
             """
             user_id = await self.get_current_user(token)
-            success = await self.key_gateway.update_public_key(user_id, key_data.public_key)
+            success = await self.key_gateway.update_ecdsa_public_key(user_id, key_data.ecdsa_public_key)
             if not success:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to update public key"
                 )
-            return {"status": "public key updated"}
+            return {"status": "ecdsa public key updated"}
 
         @self.auth_router.get("/me", response_model=UserResponse)
         async def get_current_user_info(
@@ -286,5 +287,6 @@ class AuthAPI:
             return UserResponse(
                 id=user.id,
                 name=user.name,
-                public_key=user.public_key
+                ecdsa_public_key=user.ecdsa_public_key,
+                ecdh_public_key=user.ecdh_public_key
             )
