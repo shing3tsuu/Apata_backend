@@ -23,19 +23,21 @@ class UserGateway(BaseUserGateway):
         self.db_manager = db_manager
         self.logger = logger or logging.getLogger(__name__)
 
-    async def create_user(self, name: str, public_key: str) -> UserDTO:
+    async def create_user(self, name: str, ecdsa_public_key: str, ecdh_public_key: str) -> UserDTO:
         async with self.db_manager.session() as session:
             try:
                 stmt = insert(User).values(
                     name=name,
-                    public_key=public_key
+                    ecdsa_public_key=ecdsa_public_key,
+                    ecdh_public_key=ecdh_public_key
                 ).returning(User)
                 result = await session.execute(stmt)
                 user = result.scalars().first()
                 return UserDTO(
                     id=user.id,
                     name=user.name,
-                    public_key=user.public_key
+                    ecdsa_public_key=user.ecdsa_public_key,
+                    ecdh_public_key=user.ecdh_public_key
                 )
             except Exception as e:
                 self.logger.error(f"Error creating user: {e}")
@@ -51,7 +53,8 @@ class UserGateway(BaseUserGateway):
                     return UserDTO(
                         id=user.id,
                         name=user.name,
-                        public_key=user.public_key
+                        ecdsa_public_key=user.ecdsa_public_key,
+                        ecdh_public_key=user.ecdh_public_key
                     )
                 else:
                     return None
@@ -69,7 +72,8 @@ class UserGateway(BaseUserGateway):
                     return UserDTO(
                         id=user.id,
                         name=user.name,
-                        public_key=user.public_key
+                        ecdsa_public_key=user.ecdsa_public_key,
+                        ecdh_public_key=user.ecdh_public_key
                         )
                 else:
                     return None
@@ -77,17 +81,31 @@ class UserGateway(BaseUserGateway):
                 self.logger.error("Error getting user by name: %s", e)
                 return None
 
-    async def update_public_key(self, user_id: int, public_key: str) -> bool:
+    async def update_ecdsa_public_key(self, user_id: int, ecdsa_public_key: str) -> bool:
         async with self.db_manager.session() as session:
             try:
                 stmt = update(User).where(
                     User.id == user_id
-                ).values(public_key=public_key)
+                ).values(ecdsa_public_key=ecdsa_public_key)
                 await session.execute(stmt)
                 return True
             except Exception as e:
-                self.logger.error("Error updating public key: %s", e)
+                self.logger.error("Error updating ecdsa public key: %s", e)
                 return False
+
+    async def upfate_ecdh_public_key(self, user_id: int, ecdh_public_key: str) -> bool:
+        async with self.db_manager.session() as session:
+            try:
+                stmt = update(User).where(
+                    User.id == user_id
+                ).values(ecdh_public_key=ecdh_public_key)
+                await session.execute(stmt)
+                return True
+            except Exception as e:
+                self.logger.error("Error updating ecdh public key: %s", e)
+                return False
+
+
 
 class MessageGateway(BaseMessageGateway):
     __slots__ = "db_manager"
@@ -210,26 +228,25 @@ class KeyExchangeGateway(BaseKeyExchangeGateway):
         self.db_manager = db_manager
         self.logger = logger or logging.getLogger(__name__)
 
-    async def get_public_key(self, user_id: int) -> str | None:
+    async def get_ecdsa_public_key(self, user_id: int) -> str | None:
         async with self.db_manager.session() as session:
             try:
-                stmt = select(User.public_key).where(User.id == user_id)
+                stmt = select(User.ecdsa_public_key).where(User.id == user_id)
                 result = await session.execute(stmt)
                 return result.scalar_one_or_none()
             except Exception as e:
-                self.logger.error(f"Error getting public key: {e}")
+                self.logger.error(f"Error getting ecdsa public key: {e}")
                 return None
 
-    async def update_public_key(self, user_id: int, public_key: str) -> bool:
+    async def update_ecdsa_public_key(self, user_id: int, ecdsa_public_key: str) -> bool:
         async with self.db_manager.session() as session:
             try:
                 stmt = update(User).where(
                     User.id == user_id
-                ).values(public_key=public_key)
+                ).values(ecdsa_public_key=ecdsa_public_key)
                 await session.execute(stmt)
                 return True
             except Exception as e:
-                self.logger.error(f"Error updating public key: {e}")
+                self.logger.error(f"Error updating ecdsa public key: {e}")
 
                 return False
-
