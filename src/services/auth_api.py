@@ -6,6 +6,7 @@ import logging
 import base64
 import asyncio
 import secrets
+import json
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import hashes
@@ -27,6 +28,7 @@ class AuthAPI:
             self,
             secret_key: str,
             db_manager: DatabaseManager | None = None,
+            redis = None,
             logger: logging.Logger | None = None
     ):
         """
@@ -34,10 +36,9 @@ class AuthAPI:
         Args:
             secret_key: Secret key for JWT token signing
             db_manager: Database manager instance (optional)
+            redis: Redis instance for challenge storage
             logger: Custom logger instance (optional)
         """
-        self.logger = logger or logging.getLogger(__name__)
-
         self.SECRET_KEY = secret_key
         self.ALGORITHM= "HS256" # could replace on RS256
 
@@ -45,11 +46,12 @@ class AuthAPI:
         self.CHALLENGE_EXPIRE_MINUTES: int = 5
 
         self.db_manager = db_manager or DatabaseManager()
+        self.redis = redis
+
+        self.logger = logger or logging.getLogger(__name__)
+
         self.user_gateway = UserGateway(self.db_manager)
         self.key_gateway = KeyExchangeGateway(self.db_manager)
-
-        # CRUTCH, REPLACE ON REDIS AT THE FIRST OPPORTUNITY
-        self.challenges = {}
 
         self.oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
@@ -135,7 +137,7 @@ class AuthAPI:
             ecdsa_public_key.verify(
                 signature_bytes,
                 challenge.encode(),
-                ec.ECDSA(hashes.SHA256())
+                ec.ECDSA(hashes.SHA512())
             )
             return True
         except (InvalidSignature, ValueError):
@@ -191,12 +193,17 @@ class AuthAPI:
             challenge = secrets.token_urlsafe(32)
             expires = datetime.utcnow() + timedelta(minutes=self.CHALLENGE_EXPIRE_MINUTES)
 
-            # Store challenge in temporary storage
-            self.challenges[username] = {
+            # Store challenge in Redis
+            challenge_data = {
                 "challenge": challenge,
-                "expires": expires,
+                "expires": expires.isoformat(),
                 "user_id": user.id
             }
+            self.redis.setex(
+                f"challenge:{username}",
+                timedelta(minutes=self.CHALLENGE_EXPIRE_MINUTES),
+                json.dumps(challenge_data)
+            )
 
             return {"challenge": challenge, "expires": expires.isoformat()}
 
@@ -207,18 +214,20 @@ class AuthAPI:
             Args: login_data: Login request containing username and signature
             Returns: dict: JWT access token
             """
-            # Check if challenge exists
-            if login_data.username not in self.challenges:
+            # Check if challenge exists in Redis
+            challenge_key = f"challenge:{login_data.username}"
+            challenge_data_json = self.redis.get(challenge_key)
+            if not challenge_data_json:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Challenge not found or expired"
                 )
 
-            challenge_data = self.challenges[login_data.username]
+            challenge_data = json.loads(challenge_data_json)
 
             # Check challenge expiration
-            if datetime.utcnow() > challenge_data["expires"]:
-                del self.challenges[login_data.username]
+            if datetime.utcnow() > datetime.fromisoformat(challenge_data["expires"]):
+                self.redis.delete(challenge_key)
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Challenge expired"
@@ -245,8 +254,8 @@ class AuthAPI:
                     detail="Invalid signature"
                 )
 
-            # Remove used challenge
-            del self.challenges[login_data.username]
+            # Remove used challenge from Redis
+            self.redis.delete(challenge_key)
 
             # Create JWT token
             access_token = self.create_access_token(user.id)
