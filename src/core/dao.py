@@ -141,5 +141,31 @@ class BaseKeyExchangeGateway(ABC):
         :param ecdsa_public_key:
         :return:
         """
-
         raise NotImplementedError()
+
+    @abstractmethod
+    async def get_ecdh_public_key(
+            self,
+            user_id: int
+    ) -> str | None:
+        """
+        Gets the ecdh public key for a user.
+        :param user_id:
+        :return:
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def update_ecdh_public_key(
+            self,
+            user_id: int,
+            ecdh_public_key: str
+    ) -> bool:
+        """
+        Updates the ecdh public key for a user.
+        :param user_id:
+        :param ecdh_public_key:
+        :return:
+        """
+        raise NotImplementedError()
+
