@@ -250,3 +250,27 @@ class KeyExchangeGateway(BaseKeyExchangeGateway):
                 self.logger.error(f"Error updating ecdsa public key: {e}")
 
                 return False
+
+    async def get_ecdh_public_key(self, user_id: int) -> str | None:
+        async with self.db_manager.session() as session:
+            try:
+                stmt = select(User.ecdh_public_key).where(User.id == user_id)
+                result = await session.execute(stmt)
+                return result.scalar_one_or_none()
+            except Exception as e:
+                self.logger.error(f"Error getting ecdh public key: {e}")
+                return None
+
+    async def update_ecdh_public_key(self, user_id: int, ecdh_public_key: str) -> bool:
+        async with self.db_manager.session() as session:
+            try:
+                stmt = update(User).where(
+                    User.id == user_id
+                ).values(ecdh_public_key=ecdh_public_key)
+                await session.execute(stmt)
+                return True
+            except Exception as e:
+                self.logger.error(f"Error updating ecdh public key: {e}")
+
+                return False
+
