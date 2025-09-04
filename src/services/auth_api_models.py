@@ -9,7 +9,7 @@ class PublicKeyUpdateDTO(BaseModel):
     # Development notes: keys are not changing yet, in future PFS (perfect forward secrecy) needs to be implemented
     # Development notes: add validation for keys
     """
-    ecdsa_public_key: str
+    ecdsa_public_key: str | None = None
     ecdh_public_key: str | None = None
 
 class EncryptedMessageDTO(BaseModel):
@@ -33,7 +33,7 @@ class UserRegisterResponse(BaseModel):
 class PublicKeyResponse(BaseModel):
     user_id: int
     ecdsa_public_key: str
-    ecdh_public_key: str | None = None
+    ecdh_public_key: str
 
 class ChallengeRequest(BaseModel):
     username: str
