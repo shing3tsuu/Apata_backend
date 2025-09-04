@@ -23,7 +23,6 @@ class AuthAPI:
     """
     Main authentication API class handling user registration, authentication, and key management like WebAuthn.
     """
-
     def __init__(
             self,
             secret_key: str,
@@ -114,8 +113,11 @@ class AuthAPI:
                 detail="Internal server error"
             )
 
-    @staticmethod
-    def _verify_signature(public_key_pem: str, challenge: str, signature: str) -> bool:
+    async def verify_signature(self, public_key_pem: str, challenge: str, signature: str) -> bool:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self._verify_signature, public_key_pem, challenge, signature)
+
+    def _verify_signature(self, public_key_pem: str, challenge: str, signature: str) -> bool:
         """
         Verify ECDSA signature using user's ecdsa public key
         Args:
@@ -242,7 +244,7 @@ class AuthAPI:
                 )
 
             # Verify signature
-            is_valid = self._verify_signature(
+            is_valid = await self.verify_signature(
                 user.ecdsa_public_key,
                 challenge_data["challenge"],
                 login_data.signature
@@ -261,25 +263,21 @@ class AuthAPI:
             access_token = self.create_access_token(user.id)
             return {"access_token": access_token, "token_type": "bearer"}
 
-        @self.auth_router.get("/ecdsa-public-key/{user_id}", response_model=PublicKeyResponse)
+        @self.auth_router.get("/public-keys/{user_id}", response_model=PublicKeyResponse)
         async def get_ecdsa_public_key(user_id: int):
             """
-            Retrieve ecdsa public key for specified user
-            Args: user_id: ID of user to get ecdsa public key for
-            Returns: PublicKeyResponse: User ID and ecdsa public key
+            Retrieve ecdsa public keys for specified user
+            Args: user_id: ID of user to get public keys for
+            Returns: PublicKeyResponse: User ID and public keys
             """
             ecdsa_public_key = await self.key_gateway.get_ecdsa_public_key(user_id)
-            if not ecdsa_public_key:
+            ecdh_public_key = await self.key_gateway.get_ecdh_public_key(user_id)
+            if not ecdsa_public_key or not ecdh_public_key:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Public key not found"
                 )
-            return PublicKeyResponse(user_id=user_id, ecdsa_public_key=ecdsa_public_key, ecdh_public_key=None)
-
-#        @self.auth_router.put("/ecdh-public-key/{user_id}", status_code=status.HTTP_200_OK)
-#        async def get_ecdh_public_key(user_id: int):
-#            # Need to realize
-#            pass
+            return PublicKeyResponse(user_id=user_id, ecdsa_public_key=ecdsa_public_key, ecdh_public_key=ecdh_public_key)
 
         @self.auth_router.put("/ecdsa-update-key", status_code=status.HTTP_200_OK)
         async def update_ecdsa_public_key(
@@ -287,9 +285,9 @@ class AuthAPI:
                 token: str = Depends(self.oauth2_scheme)
         ):
             """
-            Update authenticated user's public key
+            Update authenticated user's ecdsa public key
             Args:
-                key_data: New public key data
+                key_data: New ecdsa public key data
                 token: JWT authentication token
             Returns: dict: Success status
             Development note:
@@ -304,13 +302,28 @@ class AuthAPI:
                 )
             return {"status": "ecdsa public key updated"}
 
-#        @self.auth_router.put("/ecdh-update-key", status_code=status.HTTP_200_OK)
-#        async def update_ecdh_public_key(
-#                key_data: PublicKeyUpdateDTO,
-#                token: str = Depends(self.oauth2_scheme)
-#        ):
-#            # Need to realize
-#            pass
+        @self.auth_router.put("/ecdh-update-key", status_code=status.HTTP_200_OK)
+        async def update_ecdh_public_key(
+                key_data: PublicKeyUpdateDTO,
+                token: str = Depends(self.oauth2_scheme)
+        ):
+            """
+            Update authenticated user's ecdh public key
+            Args:
+                key_data: New ecdh public key data (Perfect Forward Secrecy)
+                token: JWT authentication token
+            Returns: dict: Success status
+            Development note:
+                In the current implementation of the flet client, this method is not used for its intended purpose.
+            """
+            user_id = await self.get_current_user(token)
+            success = await self.key_gateway.update_ecdh_public_key(user_id, key_data.ecdh_public_key)
+            if not success:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to update public key"
+                )
+            return {"status": "ecdh public key updated"}
 
         @self.auth_router.get("/me", response_model=UserResponse)
         async def get_current_user_info(
