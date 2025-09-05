@@ -19,7 +19,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.backends import default_backend
 
-from src.core.gateways import UserGateway, KeyExchangeGateway
+from src.core.gateways import UserGateway
 from src.core.db_manager import DatabaseManager
 
 from .auth_api_models import *
@@ -48,10 +48,6 @@ class AuthAPI:
         self.oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
         self._auth_router = APIRouter(tags=["Authentication"])
         self._register_endpoints()
-
-    def set_gateways(self, user_gateway: UserGateway, key_gateway: KeyExchangeGateway):
-        self.user_gateway = user_gateway
-        self.key_gateway = key_gateway
 
     @property
     def auth_router(self) -> APIRouter:
@@ -135,7 +131,7 @@ class AuthAPI:
             ecdsa_public_key.verify(
                 signature_bytes,
                 challenge.encode(),
-                ec.ECDSA(hashes.SHA512())
+                ec.ECDSA(hashes.SHA384())
             )
             return True
         except (InvalidSignature, ValueError):
@@ -265,14 +261,14 @@ class AuthAPI:
 
         @self.auth_router.get("/public-keys/{user_id}", response_model=PublicKeyResponse)
         @inject
-        async def get_ecdsa_public_key(user_id: int, key_gateway: FromDishka[KeyExchangeGateway]):
+        async def get_ecdsa_public_key(user_id: int, user_gateway: FromDishka[UserGateway]):
             """
             Retrieve ecdsa public keys for specified user
             Args: user_id: ID of user to get public keys for
             Returns: PublicKeyResponse: User ID and public keys
             """
-            ecdsa_public_key = await key_gateway.get_ecdsa_public_key(user_id)
-            ecdh_public_key = await key_gateway.get_ecdh_public_key(user_id)
+            ecdsa_public_key = await user_gateway.get_ecdsa_public_key(user_id)
+            ecdh_public_key = await user_gateway.get_ecdh_public_key(user_id)
             if not ecdsa_public_key or not ecdh_public_key:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -288,21 +284,21 @@ class AuthAPI:
         @inject
         async def update_ecdsa_public_key(
                 key_data: PublicKeyUpdateDTO,
-                key_gateway: FromDishka[KeyExchangeGateway],
+                user_gateway: FromDishka[UserGateway],
                 token: str = Depends(self.oauth2_scheme)
         ):
             """
             Update authenticated user's ecdsa public key
             Args:
                 key_data: New ecdsa public key data
-                key_gateway: KeyExchangeGateway
+                user_gateway: UserGateway
                 token: JWT authentication token
             Returns: dict: Success status
             Development note:
                 In the current implementation of the flet client, this method is not used for its intended purpose.
             """
             user_id = await self.get_current_user(token)
-            success = await key_gateway.update_ecdsa_public_key(user_id, key_data.ecdsa_public_key)
+            success = await user_gateway.update_ecdsa_public_key(user_id, key_data.ecdsa_public_key)
             if not success:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -314,21 +310,21 @@ class AuthAPI:
         @inject
         async def update_ecdh_public_key(
                 key_data: PublicKeyUpdateDTO,
-                key_gateway: FromDishka[KeyExchangeGateway],
+                user_gateway: FromDishka[UserGateway],
                 token: str = Depends(self.oauth2_scheme)
         ):
             """
             Update authenticated user's ecdh public key
             Args:
                 key_data: New ecdh public key data (Perfect Forward Secrecy)
-                key_gateway: KeyExchangeGateway
+                user_gateway: UserGateway
                 token: JWT authentication token
             Returns: dict: Success status
             Development note:
                 In the current implementation of the flet client, this method is not used for its intended purpose.
             """
             user_id = await self.get_current_user(token)
-            success = await key_gateway.update_ecdh_public_key(user_id, key_data.ecdh_public_key)
+            success = await user_gateway.update_ecdh_public_key(user_id, key_data.ecdh_public_key)
             if not success:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
