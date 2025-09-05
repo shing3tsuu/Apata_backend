@@ -44,6 +44,58 @@ class BaseUserGateway(ABC):
         """
         raise NotImplementedError()
 
+    @abstractmethod
+    async def get_ecdsa_public_key(
+            self,
+            user_id: int
+    ) -> str | None:
+        """
+        Gets the ecdsa public key for a user.
+        :param user_id:
+        :return:
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def update_ecdsa_public_key(
+            self,
+            user_id: int,
+            ecdsa_public_key: str
+    ) -> bool:
+        """
+        Updates the ecdsa public key for a user.
+        :param user_id:
+        :param ecdsa_public_key:
+        :return:
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def get_ecdh_public_key(
+            self,
+            user_id: int
+    ) -> str | None:
+        """
+        Gets the ecdh public key for a user.
+        :param user_id:
+        :return:
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def update_ecdh_public_key(
+            self,
+            user_id: int,
+            ecdh_public_key: str
+    ) -> bool:
+        """
+        Updates the ecdh public key for a user.
+        :param user_id:
+        :param ecdh_public_key:
+        :return:
+        """
+        raise NotImplementedError()
+
 
 class BaseMessageGateway(ABC):
     @abstractmethod
@@ -115,57 +167,3 @@ class BaseMessageGateway(ABC):
         :return:
         """
         raise NotImplementedError()
-
-class BaseKeyExchangeGateway(ABC):
-    @abstractmethod
-    async def get_ecdsa_public_key(
-            self,
-            user_id: int
-    ) -> str | None:
-        """
-        Gets the ecdsa public key for a user.
-        :param user_id:
-        :return:
-        """
-        raise NotImplementedError()
-
-    @abstractmethod
-    async def update_ecdsa_public_key(
-            self,
-            user_id: int,
-            ecdsa_public_key: str
-    ) -> bool:
-        """
-        Updates the ecdsa public key for a user.
-        :param user_id:
-        :param ecdsa_public_key:
-        :return:
-        """
-        raise NotImplementedError()
-
-    @abstractmethod
-    async def get_ecdh_public_key(
-            self,
-            user_id: int
-    ) -> str | None:
-        """
-        Gets the ecdh public key for a user.
-        :param user_id:
-        :return:
-        """
-        raise NotImplementedError()
-
-    @abstractmethod
-    async def update_ecdh_public_key(
-            self,
-            user_id: int,
-            ecdh_public_key: str
-    ) -> bool:
-        """
-        Updates the ecdh public key for a user.
-        :param user_id:
-        :param ecdh_public_key:
-        :return:
-        """
-        raise NotImplementedError()
-
