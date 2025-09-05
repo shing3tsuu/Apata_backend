@@ -19,10 +19,16 @@ class DBConfig:
     path: str | None = None
 
 @dataclass
+class RedisConfig:
+    host: str | None = 'localhost'
+    port: int | None = 6379
+
+@dataclass
 class Config:
     """ Config """
     jwt: JWTConfig
     db: DBConfig
+    redis: RedisConfig
 
 def load_config(path: str | None) -> Config:
     env = Env()
@@ -39,5 +45,9 @@ def load_config(path: str | None) -> Config:
             user=env('DB_USER', None),
             password=env('DB_PASSWORD', None),
             path=env('DB_PATH', 'data/bot.db')
+        ),
+        redis=RedisConfig(
+            host=env('REDIS_HOST', 'localhost'),
+            port=env.int('REDIS_PORT', 6379)
         )
     )
