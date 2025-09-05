@@ -10,12 +10,10 @@ import uvicorn
 from src.providers.dishka_app import AdaptersProvider, GatewaysProvider, ServicesProvider
 from src.services.auth_api import AuthAPI
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     yield
     await app.state.dishka_container.close()
-
 
 async def create_app():
     container = make_async_container(
@@ -27,12 +25,11 @@ async def create_app():
     app = FastAPI(lifespan=lifespan)
     setup_dishka(container, app)
 
-    # Получаем AuthAPI через контейнер
+    # Получаем настроенный AuthAPI
     auth_api = await container.get(AuthAPI)
     app.include_router(auth_api.get_router())
 
     return app
-
 
 if __name__ == "__main__":
     app = asyncio.run(create_app())
