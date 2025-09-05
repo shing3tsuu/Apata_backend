@@ -1,10 +1,11 @@
 from dishka import Provider, Scope, provide
+import asyncio
 import redis
 import logging
 
 from src.config import Config, load_config
 from src.core.db_manager import DatabaseManager
-from src.core.gateways import UserGateway, MessageGateway, KeyExchangeGateway
+from src.core.gateways import UserGateway, MessageGateway
 from src.services.auth_api import AuthAPI
 
 class AdaptersProvider(Provider):
@@ -35,10 +36,6 @@ class GatewaysProvider(Provider):
     @provide(scope=Scope.REQUEST)
     def get_message_gateway(self, db_manager: DatabaseManager) -> MessageGateway:
         return MessageGateway(db_manager)
-
-    @provide(scope=Scope.REQUEST)
-    def get_key_gateway(self, db_manager: DatabaseManager) -> KeyExchangeGateway:
-        return KeyExchangeGateway(db_manager)
 
 class ServicesProvider(Provider):
     @provide(scope=Scope.APP)
