@@ -1,47 +1,39 @@
 import asyncio
 import logging
-import threading
-import uvicorn
-from fastapi import FastAPI
 from contextlib import asynccontextmanager
 
-from core.db_manager import DatabaseManager
+from dishka import make_async_container
+from dishka.integrations.fastapi import setup_dishka
+from fastapi import FastAPI
+import uvicorn
+
+from src.providers.dishka_app import AdaptersProvider, GatewaysProvider, ServicesProvider
 from src.services.auth_api import AuthAPI
-from src.config import load_config
 
-from core.redis import RedisManager
 
-async def main():
-    redis = RedisManager().get_redis()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    await app.state.dishka_container.close()
 
-    config = load_config(".env")
 
-    db_manager = DatabaseManager()
-    await db_manager.create_tables()
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
-    )
-    logger = logging.getLogger(__name__)
-
-    auth_api = AuthAPI(
-        secret_key=config.jwt.secret_key,
-        db_manager=db_manager,
-        redis=redis,
-        logger=logger
+async def create_app():
+    container = make_async_container(
+        AdaptersProvider(),
+        GatewaysProvider(),
+        ServicesProvider(),
     )
 
-    app = FastAPI()
+    app = FastAPI(lifespan=lifespan)
+    setup_dishka(container, app)
+
+    # Получаем AuthAPI через контейнер
+    auth_api = await container.get(AuthAPI)
     app.include_router(auth_api.get_router())
 
     return app
 
+
 if __name__ == "__main__":
-    try:
-        app = asyncio.run(main())
-        uvicorn.run(app, log_level="info")
-    except Exception as e:
-        logger = logging.getLogger(__name__)
-        logger.error(e, exc_info=True)
-        raise
+    app = asyncio.run(create_app())
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
