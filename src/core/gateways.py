@@ -11,7 +11,7 @@ from typing import Callable, Optional
 import logging
 
 from .database import User, Message
-from .dao import BaseUserGateway, BaseMessageGateway, BaseKeyExchangeGateway
+from .dao import BaseUserGateway, BaseMessageGateway
 from .dto import UserDTO, MessageDTO
 from src.config import load_config
 from .db_manager import DatabaseManager
@@ -81,6 +81,16 @@ class UserGateway(BaseUserGateway):
                 self.logger.error("Error getting user by name: %s", e)
                 return None
 
+    async def get_ecdsa_public_key(self, user_id: int) -> str | None:
+        async with self.db_manager.session() as session:
+            try:
+                stmt = select(User.ecdsa_public_key).where(User.id == user_id)
+                result = await session.execute(stmt)
+                return result.scalar_one_or_none()
+            except Exception as e:
+                self.logger.error(f"Error getting ecdsa public key: {e}")
+                return None
+
     async def update_ecdsa_public_key(self, user_id: int, ecdsa_public_key: str) -> bool:
         async with self.db_manager.session() as session:
             try:
@@ -90,10 +100,20 @@ class UserGateway(BaseUserGateway):
                 await session.execute(stmt)
                 return True
             except Exception as e:
-                self.logger.error("Error updating ecdsa public key: %s", e)
+                self.logger.error(f"Error updating ecdsa public key: {e}")
                 return False
 
-    async def upfate_ecdh_public_key(self, user_id: int, ecdh_public_key: str) -> bool:
+    async def get_ecdh_public_key(self, user_id: int) -> str | None:
+        async with self.db_manager.session() as session:
+            try:
+                stmt = select(User.ecdh_public_key).where(User.id == user_id)
+                result = await session.execute(stmt)
+                return result.scalar_one_or_none()
+            except Exception as e:
+                self.logger.error(f"Error getting ecdh public key: {e}")
+                return None
+
+    async def update_ecdh_public_key(self, user_id: int, ecdh_public_key: str) -> bool:
         async with self.db_manager.session() as session:
             try:
                 stmt = update(User).where(
@@ -102,10 +122,9 @@ class UserGateway(BaseUserGateway):
                 await session.execute(stmt)
                 return True
             except Exception as e:
-                self.logger.error("Error updating ecdh public key: %s", e)
+                self.logger.error(f"Error updating ecdh public key: {e}")
+
                 return False
-
-
 
 class MessageGateway(BaseMessageGateway):
     __slots__ = "db_manager"
@@ -220,57 +239,3 @@ class MessageGateway(BaseMessageGateway):
             except Exception as e:
                 self.logger.error(f"Error getting conversation history: {e}")
                 return []
-
-class KeyExchangeGateway(BaseKeyExchangeGateway):
-    __slots__ = "db_manager"
-
-    def __init__(self, db_manager: DatabaseManager, logger: logging.Logger | None = None):
-        self.db_manager = db_manager
-        self.logger = logger or logging.getLogger(__name__)
-
-    async def get_ecdsa_public_key(self, user_id: int) -> str | None:
-        async with self.db_manager.session() as session:
-            try:
-                stmt = select(User.ecdsa_public_key).where(User.id == user_id)
-                result = await session.execute(stmt)
-                return result.scalar_one_or_none()
-            except Exception as e:
-                self.logger.error(f"Error getting ecdsa public key: {e}")
-                return None
-
-    async def update_ecdsa_public_key(self, user_id: int, ecdsa_public_key: str) -> bool:
-        async with self.db_manager.session() as session:
-            try:
-                stmt = update(User).where(
-                    User.id == user_id
-                ).values(ecdsa_public_key=ecdsa_public_key)
-                await session.execute(stmt)
-                return True
-            except Exception as e:
-                self.logger.error(f"Error updating ecdsa public key: {e}")
-
-                return False
-
-    async def get_ecdh_public_key(self, user_id: int) -> str | None:
-        async with self.db_manager.session() as session:
-            try:
-                stmt = select(User.ecdh_public_key).where(User.id == user_id)
-                result = await session.execute(stmt)
-                return result.scalar_one_or_none()
-            except Exception as e:
-                self.logger.error(f"Error getting ecdh public key: {e}")
-                return None
-
-    async def update_ecdh_public_key(self, user_id: int, ecdh_public_key: str) -> bool:
-        async with self.db_manager.session() as session:
-            try:
-                stmt = update(User).where(
-                    User.id == user_id
-                ).values(ecdh_public_key=ecdh_public_key)
-                await session.execute(stmt)
-                return True
-            except Exception as e:
-                self.logger.error(f"Error updating ecdh public key: {e}")
-
-                return False
-
