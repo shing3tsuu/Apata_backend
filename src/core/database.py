@@ -4,9 +4,6 @@ from datetime import datetime
 from typing import List, Optional
 
 class Base(DeclarativeBase):
-    """
-    backend (fastapi)
-    """
     pass
 
 class User(Base):
@@ -17,15 +14,42 @@ class User(Base):
     ecdsa_public_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     ecdh_public_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    sent_messages: Mapped[List["Message"]] = relationship(
+        "Message",
+        foreign_keys="Message.sender_id",
+        back_populates="sender"
+    )
+    received_messages: Mapped[List["Message"]] = relationship(
+        "Message",
+        foreign_keys="Message.recipient_id",
+        back_populates="recipient"
+    )
+
 class Message(Base):
     __tablename__ = "messages"
+
+    __table_args__ = (
+        Index('ix_messages_is_delivered', 'is_delivered'),
+        Index('ix_messages_recipient_delivered', 'recipient_id', 'is_delivered'),
+        Index('ix_messages_sender_timestamp', 'sender_id', 'timestamp'),
+        Index('ix_messages_recipient_timestamp', 'recipient_id', 'timestamp'),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     sender_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     recipient_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    message: Mapped[bytes] = mapped_column(LargeBinary)  # Encrypted message data
+    message: Mapped[bytes] = mapped_column(LargeBinary)
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     is_delivered: Mapped[bool] = mapped_column(default=False)
     encryption_version: Mapped[int] = mapped_column(default=1)
 
-
+    sender: Mapped["User"] = relationship(
+        "User",
+        foreign_keys=[sender_id],
+        back_populates="sent_messages"
+    )
+    recipient: Mapped["User"] = relationship(
+        "User",
+        foreign_keys=[recipient_id],
+        back_populates="received_messages"
+    )
