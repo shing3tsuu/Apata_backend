@@ -28,15 +28,15 @@ class AdaptersProvider(Provider):
         return db_manager
 
 class GatewaysProvider(Provider):
-    @provide(scope=Scope.APP)
+    @provide(scope=Scope.REQUEST)
     def get_user_gateway(self, db_manager: DatabaseManager) -> UserGateway:
         return UserGateway(db_manager)
 
-    @provide(scope=Scope.APP)
+    @provide(scope=Scope.REQUEST)
     def get_message_gateway(self, db_manager: DatabaseManager) -> MessageGateway:
         return MessageGateway(db_manager)
 
-    @provide(scope=Scope.APP)
+    @provide(scope=Scope.REQUEST)
     def get_key_gateway(self, db_manager: DatabaseManager) -> KeyExchangeGateway:
         return KeyExchangeGateway(db_manager)
 
@@ -45,15 +45,11 @@ class ServicesProvider(Provider):
     def get_auth_api(
         self,
         config: Config,
-        user_gateway: UserGateway,
-        key_gateway: KeyExchangeGateway,
         redis: redis.Redis,
         logger: logging.Logger
     ) -> AuthAPI:
         return AuthAPI(
             secret_key=config.jwt.secret_key,
-            user_gateway=user_gateway,
-            key_gateway=key_gateway,
             redis=redis,
             logger=logger
         )
