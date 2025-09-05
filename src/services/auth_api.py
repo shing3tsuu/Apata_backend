@@ -26,15 +26,9 @@ from .auth_api_models import *
 
 
 class AuthAPI:
-    """
-    Main authentication API class handling user registration, authentication, and key management like WebAuthn.
-    """
-
     def __init__(
             self,
             secret_key: str,
-            user_gateway: UserGateway,
-            key_gateway: KeyExchangeGateway,
             redis: redis.Redis,
             logger: logging.Logger
     ):
@@ -42,26 +36,22 @@ class AuthAPI:
         Initialize AuthAPI with configuration and dependencies
         Args:
             secret_key: Secret key for JWT token signing
-            user_gateway: User gateway instance
-            key_gateway: Key exchange gateway instance
             redis: Redis instance for challenge storage
             logger: Logger instance
         """
         self.SECRET_KEY = secret_key
         self.ALGORITHM = "HS256"
-
         self.ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
         self.CHALLENGE_EXPIRE_MINUTES: int = 5
-
-        self.user_gateway = user_gateway
-        self.key_gateway = key_gateway
         self.redis = redis
         self.logger = logger
-
         self.oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
-
         self._auth_router = APIRouter(tags=["Authentication"])
         self._register_endpoints()
+
+    def set_gateways(self, user_gateway: UserGateway, key_gateway: KeyExchangeGateway):
+        self.user_gateway = user_gateway
+        self.key_gateway = key_gateway
 
     @property
     def auth_router(self) -> APIRouter:
@@ -164,19 +154,20 @@ class AuthAPI:
         """
 
         @self.auth_router.post("/register", status_code=status.HTTP_201_CREATED)
-        async def register(user_data: UserRegisterRequest):
+        @inject
+        async def register(user_data: UserRegisterRequest, user_gateway: FromDishka[UserGateway]):
             """
             Register new user with public keys (ecdsa and ecdh)
             Args: user_data: User registration data containing username and public keys
             Returns: dict: Created user's ID and username
             """
-            if await self.user_gateway.get_user_by_name(user_data.username):
+            if await user_gateway.get_user_by_name(user_data.username):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Username already exists"
                 )
 
-            user = await self.user_gateway.create_user(
+            user = await user_gateway.create_user(
                 name=user_data.username,
                 ecdsa_public_key=user_data.ecdsa_public_key,
                 ecdh_public_key=user_data.ecdh_public_key
@@ -185,13 +176,14 @@ class AuthAPI:
             return {"id": user.id, "username": user.name}
 
         @self.auth_router.get("/challenge/{username}")
-        async def get_challenge(username: str):
+        @inject
+        async def get_challenge(username: str, user_gateway: FromDishka[UserGateway]):
             """
             Request authentication challenge for user
             Args: username: Username to generate challenge for
             Returns: dict: Generated challenge and expiration time
             """
-            user = await self.user_gateway.get_user_by_name(username)
+            user = await user_gateway.get_user_by_name(username)
             if not user:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -217,7 +209,8 @@ class AuthAPI:
             return {"challenge": challenge, "expires": expires.isoformat()}
 
         @self.auth_router.post("/login", response_model=dict)
-        async def login(login_data: ChallengeLoginRequest):
+        @inject
+        async def login(login_data: ChallengeLoginRequest, user_gateway: FromDishka[UserGateway]):
             """
             Authenticate user using signed challenge
             Args: login_data: Login request containing username and signature
@@ -243,7 +236,7 @@ class AuthAPI:
                 )
 
             # Get user and public key
-            user = await self.user_gateway.get_user_by_name(login_data.username)
+            user = await user_gateway.get_user_by_name(login_data.username)
             if not user:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -271,38 +264,45 @@ class AuthAPI:
             return {"access_token": access_token, "token_type": "bearer"}
 
         @self.auth_router.get("/public-keys/{user_id}", response_model=PublicKeyResponse)
-        async def get_ecdsa_public_key(user_id: int):
+        @inject
+        async def get_ecdsa_public_key(user_id: int, key_gateway: FromDishka[KeyExchangeGateway]):
             """
             Retrieve ecdsa public keys for specified user
             Args: user_id: ID of user to get public keys for
             Returns: PublicKeyResponse: User ID and public keys
             """
-            ecdsa_public_key = await self.key_gateway.get_ecdsa_public_key(user_id)
-            ecdh_public_key = await self.key_gateway.get_ecdh_public_key(user_id)
+            ecdsa_public_key = await key_gateway.get_ecdsa_public_key(user_id)
+            ecdh_public_key = await key_gateway.get_ecdh_public_key(user_id)
             if not ecdsa_public_key or not ecdh_public_key:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Public key not found"
                 )
-            return PublicKeyResponse(user_id=user_id, ecdsa_public_key=ecdsa_public_key,
-                                     ecdh_public_key=ecdh_public_key)
+            return PublicKeyResponse(
+                user_id=user_id,
+                ecdsa_public_key=ecdsa_public_key,
+                ecdh_public_key=ecdh_public_key
+            )
 
         @self.auth_router.put("/ecdsa-update-key", status_code=status.HTTP_200_OK)
+        @inject
         async def update_ecdsa_public_key(
                 key_data: PublicKeyUpdateDTO,
+                key_gateway: FromDishka[KeyExchangeGateway],
                 token: str = Depends(self.oauth2_scheme)
         ):
             """
             Update authenticated user's ecdsa public key
             Args:
                 key_data: New ecdsa public key data
+                key_gateway: KeyExchangeGateway
                 token: JWT authentication token
             Returns: dict: Success status
             Development note:
                 In the current implementation of the flet client, this method is not used for its intended purpose.
             """
             user_id = await self.get_current_user(token)
-            success = await self.key_gateway.update_ecdsa_public_key(user_id, key_data.ecdsa_public_key)
+            success = await key_gateway.update_ecdsa_public_key(user_id, key_data.ecdsa_public_key)
             if not success:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -311,21 +311,24 @@ class AuthAPI:
             return {"status": "ecdsa public key updated"}
 
         @self.auth_router.put("/ecdh-update-key", status_code=status.HTTP_200_OK)
+        @inject
         async def update_ecdh_public_key(
                 key_data: PublicKeyUpdateDTO,
+                key_gateway: FromDishka[KeyExchangeGateway],
                 token: str = Depends(self.oauth2_scheme)
         ):
             """
             Update authenticated user's ecdh public key
             Args:
                 key_data: New ecdh public key data (Perfect Forward Secrecy)
+                key_gateway: KeyExchangeGateway
                 token: JWT authentication token
             Returns: dict: Success status
             Development note:
                 In the current implementation of the flet client, this method is not used for its intended purpose.
             """
             user_id = await self.get_current_user(token)
-            success = await self.key_gateway.update_ecdh_public_key(user_id, key_data.ecdh_public_key)
+            success = await key_gateway.update_ecdh_public_key(user_id, key_data.ecdh_public_key)
             if not success:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -334,7 +337,9 @@ class AuthAPI:
             return {"status": "ecdh public key updated"}
 
         @self.auth_router.get("/me", response_model=UserResponse)
+        @inject
         async def get_current_user_info(
+                user_gateway: FromDishka[UserGateway],
                 token: str = Depends(self.oauth2_scheme)
         ):
             """
@@ -343,7 +348,7 @@ class AuthAPI:
             Returns: UserResponse: User information
             """
             user_id = await self.get_current_user(token)
-            user = await self.user_gateway.get_user_by_id(user_id)
+            user = await user_gateway.get_user_by_id(user_id)
             if not user:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
