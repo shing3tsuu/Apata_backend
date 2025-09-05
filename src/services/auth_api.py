@@ -2,11 +2,17 @@ from fastapi import FastAPI, status, HTTPException, Depends, APIRouter
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import jwt, JWTError
 from datetime import datetime, timedelta, timezone
+
+from dishka import FromDishka
+from dishka.integrations.fastapi import inject
+
 import logging
 import base64
 import asyncio
 import secrets
 import json
+import redis
+
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import hashes
@@ -23,34 +29,34 @@ class AuthAPI:
     """
     Main authentication API class handling user registration, authentication, and key management like WebAuthn.
     """
+
     def __init__(
             self,
             secret_key: str,
-            db_manager: DatabaseManager | None = None,
-            redis = None,
-            logger: logging.Logger | None = None
+            user_gateway: UserGateway,
+            key_gateway: KeyExchangeGateway,
+            redis: redis.Redis,
+            logger: logging.Logger
     ):
         """
         Initialize AuthAPI with configuration and dependencies
         Args:
             secret_key: Secret key for JWT token signing
-            db_manager: Database manager instance (optional)
+            user_gateway: User gateway instance
+            key_gateway: Key exchange gateway instance
             redis: Redis instance for challenge storage
-            logger: Custom logger instance (optional)
+            logger: Logger instance
         """
         self.SECRET_KEY = secret_key
-        self.ALGORITHM= "HS256" # could replace on RS256
+        self.ALGORITHM = "HS256"
 
         self.ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
         self.CHALLENGE_EXPIRE_MINUTES: int = 5
 
-        self.db_manager = db_manager or DatabaseManager()
+        self.user_gateway = user_gateway
+        self.key_gateway = key_gateway
         self.redis = redis
-
-        self.logger = logger or logging.getLogger(__name__)
-
-        self.user_gateway = UserGateway(self.db_manager)
-        self.key_gateway = KeyExchangeGateway(self.db_manager)
+        self.logger = logger
 
         self.oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
@@ -156,6 +162,7 @@ class AuthAPI:
         Register all authentication endpoints with the router
         # Development notes: add work with ecdh public key
         """
+
         @self.auth_router.post("/register", status_code=status.HTTP_201_CREATED)
         async def register(user_data: UserRegisterRequest):
             """
@@ -277,7 +284,8 @@ class AuthAPI:
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Public key not found"
                 )
-            return PublicKeyResponse(user_id=user_id, ecdsa_public_key=ecdsa_public_key, ecdh_public_key=ecdh_public_key)
+            return PublicKeyResponse(user_id=user_id, ecdsa_public_key=ecdsa_public_key,
+                                     ecdh_public_key=ecdh_public_key)
 
         @self.auth_router.put("/ecdsa-update-key", status_code=status.HTTP_200_OK)
         async def update_ecdsa_public_key(
