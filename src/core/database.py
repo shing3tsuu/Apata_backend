@@ -1,7 +1,8 @@
-from sqlalchemy import ForeignKey, String, Text, DateTime, Boolean, Index, BigInteger, LargeBinary
+from sqlalchemy import ForeignKey, String, Text, DateTime, Boolean, Index, BigInteger, LargeBinary, Enum
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from datetime import datetime
 from typing import List, Optional
+
 
 class Base(DeclarativeBase):
     pass
@@ -23,6 +24,41 @@ class User(Base):
         "Message",
         foreign_keys="Message.recipient_id",
         back_populates="recipient"
+    )
+
+    sent_requests: Mapped[List["ContactRequest"]] = relationship(
+        "ContactRequest",
+        foreign_keys="ContactRequest.sender_id",
+        back_populates="sender"
+    )
+    received_requests: Mapped[List["ContactRequest"]] = relationship(
+        "ContactRequest",
+        foreign_keys="ContactRequest.receiver_id",
+        back_populates="receiver"
+    )
+
+class ContactRequest(Base):
+    __tablename__ = "contact_requests"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sender_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    receiver_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    status: Mapped[str]
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    sender: Mapped["User"] = relationship(
+        "User",
+        foreign_keys=[sender_id],
+        back_populates="sent_requests"
+    )
+    receiver: Mapped["User"] = relationship(
+        "User",
+        foreign_keys=[receiver_id],
+        back_populates="received_requests"
+    )
+
+    __table_args__ = (
+        Index('ix_unique_request', 'sender_id', 'receiver_id', unique=True),
     )
 
 class Message(Base):
