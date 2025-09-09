@@ -45,6 +45,77 @@ class BaseUserGateway(ABC):
         raise NotImplementedError()
 
     @abstractmethod
+    async def get_users_by_name(
+            self,
+            name: str
+    ) -> list[UserDTO]:
+        """
+        Get users by User.name (first 10 results)
+        :param name:
+        :return:
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def add_contact_request(
+            self,
+            sender_id: int,
+            receiver_id: int,
+            status: str
+    ) -> ContactRequestDTO:
+        """
+        Adds a contact to the database.
+        :param sender_id:
+        :param receiver_id:
+        :param status:
+        :return:
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def get_contact_request(
+            self,
+            sender_id: int,
+            receiver_id: int
+    ) -> ContactRequestDTO:
+        """
+        Gets one contact requests from current user to another.
+        :param sender_id:
+        :param receiver_id:
+        :return:
+        """
+
+    @abstractmethod
+    async def get_contact_requests(
+            self,
+            receiver_id: int,
+            status: str
+    ) -> list[ContactRequestDTO]:
+        """
+        Gets all waiting contact requests for a user.
+        :param receiver_id:
+        :param status:
+        :return:
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def update_contact_request(
+            self,
+            sender_id: int,
+            receiver_id: int,
+            status: str
+    ) -> bool:
+        """
+        Accepts a contact request.
+        :param sender_id:
+        :param receiver_id:
+        :param status:
+        :return:
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
     async def get_ecdsa_public_key(
             self,
             user_id: int
