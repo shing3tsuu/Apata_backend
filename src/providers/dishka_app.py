@@ -6,7 +6,9 @@ import logging
 from src.config import Config, load_config
 from src.core.db_manager import DatabaseManager
 from src.core.gateways import UserGateway, MessageGateway
+
 from src.services.auth_api import AuthAPI
+from src.services.contact_api import ContactAPI
 
 class AdaptersProvider(Provider):
     @provide(scope=Scope.APP)
@@ -30,12 +32,20 @@ class AdaptersProvider(Provider):
 
 class GatewaysProvider(Provider):
     @provide(scope=Scope.REQUEST)
-    def get_user_gateway(self, db_manager: DatabaseManager) -> UserGateway:
-        return UserGateway(db_manager)
+    def get_user_gateway(
+            self,
+            db_manager: DatabaseManager,
+            logger: logging.Logger
+    ) -> UserGateway:
+        return UserGateway(db_manager, logger)
 
     @provide(scope=Scope.REQUEST)
-    def get_message_gateway(self, db_manager: DatabaseManager) -> MessageGateway:
-        return MessageGateway(db_manager)
+    def get_message_gateway(
+            self,
+            db_manager: DatabaseManager,
+            logger: logging.Logger
+    ) -> MessageGateway:
+        return MessageGateway(db_manager, logger)
 
 class ServicesProvider(Provider):
     @provide(scope=Scope.APP)
@@ -47,6 +57,17 @@ class ServicesProvider(Provider):
     ) -> AuthAPI:
         return AuthAPI(
             secret_key=config.jwt.secret_key,
+            redis=redis,
+            logger=logger
+        )
+
+    @provide(scope=Scope.APP)
+    def get_contact_api(
+            self,
+            redis: redis.Redis,
+            logger: logging.Logger
+    ) -> ContactAPI:
+        return ContactAPI(
             redis=redis,
             logger=logger
         )
