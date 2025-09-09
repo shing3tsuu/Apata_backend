@@ -28,13 +28,6 @@ class ContactAPI:
             redis: redis.Redis,
             logger: logging.Logger
     ):
-        """
-        Initialize AuthAPI with configuration and dependencies
-        Args:
-            secret_key: Secret key for JWT token signing
-            redis: Redis instance for challenge storage
-            logger: Logger instance
-        """
         self.redis = redis
         self.logger = logger
 
@@ -249,5 +242,6 @@ class ContactAPI:
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to reject contact request"
                 )
+
 
             return {"status": "success reject contact request",}
