@@ -10,9 +10,9 @@ from functools import wraps
 from typing import Callable, Optional
 import logging
 
-from .database import User, Message
+from .database import User, ContactRequest, Message
 from .dao import BaseUserGateway, BaseMessageGateway
-from .dto import UserDTO, MessageDTO
+from .dto import UserDTO, ContactRequestDTO, MessageDTO
 from src.config import load_config
 from .db_manager import DatabaseManager
 
@@ -40,7 +40,7 @@ class UserGateway(BaseUserGateway):
                     ecdh_public_key=user.ecdh_public_key
                 )
             except Exception as e:
-                self.logger.error(f"Error creating user: {e}")
+                self.logger.error(f"Error creating user in database: {e}")
                 raise
 
     async def get_user_by_id(self, user_id: int) -> UserDTO | None:
@@ -59,7 +59,7 @@ class UserGateway(BaseUserGateway):
                 else:
                     return None
             except Exception as e:
-                self.logger.error(f"Error getting user by id: %s", e)
+                self.logger.error(f"Error getting user by id in database: %s", e)
                 return None
 
     async def get_user_by_name(self, name: str) -> UserDTO | None:
@@ -78,8 +78,123 @@ class UserGateway(BaseUserGateway):
                 else:
                     return None
             except Exception as e:
-                self.logger.error("Error getting user by name: %s", e)
+                self.logger.error("Error getting user by name in database: %s", e)
                 return None
+
+    async def get_users_by_name(self, name: str) -> list[UserDTO] | None:
+        async with self.db_manager.session() as session:
+            try:
+                stmt = select(User).where(
+                        User.name.ilike(f"%{name}%"),
+                ).limit(10)
+                result = await session.execute(stmt)
+                users = result.scalars().all()
+                if not users:
+                    return None
+                else:
+                    return [
+                        UserDTO(
+                            id=user.id,
+                            name=user.name,
+                            ecdsa_public_key=user.ecdsa_public_key,
+                            ecdh_public_key=user.ecdh_public_key
+                            ) for user in users
+                    ]
+            except Exception as e:
+                self.logger.error("Error getting users by name in database: %s", e)
+                return None
+
+    async def add_contact_request(self, sender_id: int, receiver_id: int, status: str) -> ContactRequestDTO:
+        async with self.db_manager.session() as session:
+            try:
+                stmt = insert(ContactRequest).values(
+                    sender_id=sender_id,
+                    receiver_id=receiver_id,
+                    status=status
+                ).returning(ContactRequest)
+
+                result = await session.execute(stmt)
+                contact = result.scalars().first()
+
+                return ContactRequestDTO(
+                    id=contact.id,
+                    sender_id=contact.sender_id,
+                    receiver_id=contact.receiver_id,
+                    status=contact.status,
+                    created_at=contact.created_at
+                )
+
+            except Exception as e:
+                self.logger.error(f"Error adding contact in database: {e}")
+                raise
+
+    async def get_contact_request(self, sender_id: int, receiver_id: int) -> ContactRequestDTO | None:
+        async with self.db_manager.session() as session:
+            try:
+                stmt = select(ContactRequest).where(
+                    ContactRequest.sender_id == sender_id,
+                    ContactRequest.receiver_id == receiver_id
+                )
+                result = await session.execute(stmt)
+                contact = result.scalars().first()
+
+                if contact is None:
+                    return None
+
+                return ContactRequestDTO(
+                    id=contact.id,
+                    sender_id=contact.sender_id,
+                    receiver_id=contact.receiver_id,
+                    status=contact.status,
+                    created_at=contact.created_at
+                    )
+
+            except Exception as e:
+                self.logger.error(f"Error getting contact requests in database: {e}")
+                return None
+
+    async def get_contact_requests(self, receiver_id: int, status: str) -> list[ContactRequestDTO] | None:
+        async with self.db_manager.session() as session:
+            try:
+                stmt = select(ContactRequest).where(
+                    ContactRequest.receiver_id == receiver_id,
+                    ContactRequest.status == status
+                )
+                result = await session.execute(stmt)
+                contacts = result.scalars().all()
+
+                if not contacts:
+                    return []
+
+                else:
+                    return [
+                        ContactRequestDTO(
+                        id=contact.id,
+                        sender_id=contact.sender_id,
+                        receiver_id=contact.receiver_id,
+                        status=contact.status,
+                        created_at=contact.created_at
+                        ) for contact in contacts
+                    ]
+
+            except Exception as e:
+                self.logger.error(f"Error getting contact requests in database: {e}")
+                return None
+
+    async def update_contact_request(self, sender_id: int, receiver_id: int, status: str) -> bool:
+        async with self.db_manager.session() as session:
+            try:
+                stmt = update(ContactRequest).where(
+                    ContactRequest.sender_id == sender_id,
+                    ContactRequest.receiver_id == receiver_id
+                ).values(status=status)
+
+                await session.execute(stmt)
+                return True
+
+            except Exception as e:
+                self.logger.error(f"Error accepting contact request in database: {e}")
+                return False
 
     async def get_ecdsa_public_key(self, user_id: int) -> str | None:
         async with self.db_manager.session() as session:
@@ -87,8 +202,9 @@ class UserGateway(BaseUserGateway):
                 stmt = select(User.ecdsa_public_key).where(User.id == user_id)
                 result = await session.execute(stmt)
                 return result.scalar_one_or_none()
+
             except Exception as e:
-                self.logger.error(f"Error getting ecdsa public key: {e}")
+                self.logger.error(f"Error getting ecdsa public key in database: {e}")
                 return None
 
     async def update_ecdsa_public_key(self, user_id: int, ecdsa_public_key: str) -> bool:
@@ -98,9 +214,11 @@ class UserGateway(BaseUserGateway):
                     User.id == user_id
                 ).values(ecdsa_public_key=ecdsa_public_key)
                 await session.execute(stmt)
+
                 return True
+
             except Exception as e:
-                self.logger.error(f"Error updating ecdsa public key: {e}")
+                self.logger.error(f"Error updating ecdsa public key in database: {e}")
                 return False
 
     async def get_ecdh_public_key(self, user_id: int) -> str | None:
@@ -108,9 +226,11 @@ class UserGateway(BaseUserGateway):
             try:
                 stmt = select(User.ecdh_public_key).where(User.id == user_id)
                 result = await session.execute(stmt)
+
                 return result.scalar_one_or_none()
+
             except Exception as e:
-                self.logger.error(f"Error getting ecdh public key: {e}")
+                self.logger.error(f"Error getting ecdh public key in database: {e}")
                 return None
 
     async def update_ecdh_public_key(self, user_id: int, ecdh_public_key: str) -> bool:
@@ -120,18 +240,19 @@ class UserGateway(BaseUserGateway):
                     User.id == user_id
                 ).values(ecdh_public_key=ecdh_public_key)
                 await session.execute(stmt)
-                return True
-            except Exception as e:
-                self.logger.error(f"Error updating ecdh public key: {e}")
 
+                return True
+
+            except Exception as e:
+                self.logger.error(f"Error updating ecdh public key in databse: {e}")
                 return False
 
 class MessageGateway(BaseMessageGateway):
     __slots__ = "db_manager"
 
-    def __init__(self, db_manager: DatabaseManager, logger: logging.Logger | None = None):
+    def __init__(self, db_manager: DatabaseManager, logger: logging.Logger):
         self.db_manager = db_manager
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logger
 
     async def create_message(self, sender_id: int, recipient_id: int, message: bytes, encryption_version: int)\
             -> MessageDTO:
@@ -145,6 +266,7 @@ class MessageGateway(BaseMessageGateway):
                 ).returning(Message)
                 result = await session.execute(stmt)
                 msg = result.scalars().first()
+
                 return MessageDTO(
                     id=msg.id,
                     sender_id=msg.sender_id,
@@ -154,6 +276,7 @@ class MessageGateway(BaseMessageGateway):
                     is_delivered=msg.is_delivered,
                     encryption_version=msg.encryption_version
                 )
+
             except Exception as e:
                 self.logger.error("Error creating message: %s", e)
                 raise
@@ -167,6 +290,7 @@ class MessageGateway(BaseMessageGateway):
                 )
                 result = await session.execute(stmt)
                 messages = result.scalars().all()
+
                 return [
                     MessageDTO(
                         id=m.id,
@@ -178,6 +302,7 @@ class MessageGateway(BaseMessageGateway):
                         encryption_version=m.encryption_version
                     ) for m in messages
                 ]
+
             except Exception as e:
                 self.logger.error("Error getting messages: %s", e)
                 return []
@@ -189,7 +314,9 @@ class MessageGateway(BaseMessageGateway):
                     Message.id == message_id
                 ).values(is_delivered=True)
                 await session.execute(stmt)
+
                 return True
+
             except Exception as e:
                 self.logger.error("Error marking message delivered: %s", e)
                 return False
@@ -200,6 +327,7 @@ class MessageGateway(BaseMessageGateway):
                 stmt = select(Message).where(Message.id == message_id)
                 result = await session.execute(stmt)
                 msg = result.scalars().first()
+
                 if msg:
                     return MessageDTO(
                         id=msg.id,
@@ -211,6 +339,7 @@ class MessageGateway(BaseMessageGateway):
                         encryption_version=msg.encryption_version
                     )
                 return None
+
             except Exception as e:
                 self.logger.error(f"Error getting message by ID: {e}")
                 return None
