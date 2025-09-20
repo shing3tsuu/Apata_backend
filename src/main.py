@@ -7,7 +7,7 @@ from dishka.integrations.fastapi import setup_dishka
 from fastapi import FastAPI
 import uvicorn
 
-from src.providers.dishka_app import AdaptersProvider, GatewaysProvider, ServicesProvider
+from src.providers import AdaptersProvider, GatewaysProvider, ServicesProvider
 
 from src.services.routers import AuthAPI, ContactAPI, MessageAPI
 
@@ -40,3 +40,4 @@ if __name__ == "__main__":
     app = asyncio.run(create_app())
 
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+
