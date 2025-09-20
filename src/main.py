@@ -9,7 +9,7 @@ import uvicorn
 
 from src.providers.dishka_app import AdaptersProvider, GatewaysProvider, ServicesProvider
 
-from src.services import AuthAPI, ContactAPI, MessageAPI
+from src.services.routers import AuthAPI, ContactAPI, MessageAPI
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -38,4 +38,5 @@ async def create_app():
 
 if __name__ == "__main__":
     app = asyncio.run(create_app())
+
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
