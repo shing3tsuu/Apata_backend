@@ -75,9 +75,11 @@ class ServicesProvider(Provider):
     def get_message_api(
             self,
             logger: logging.Logger,
-            auth_api: AuthAPI
+            auth_api: AuthAPI,
+            redis: redis.Redis
     ) -> MessageAPI:
         return MessageAPI(
             logger=logger,
-            auth_api=auth_api
+            auth_api=auth_api,
+            redis=redis
         )
