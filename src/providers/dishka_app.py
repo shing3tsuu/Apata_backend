@@ -6,8 +6,7 @@ import logging
 from src.config import Config, load_config
 from src.core.db_manager import DatabaseManager
 from src.core.gateways import UserGateway, MessageGateway
-
-from src.services import AuthAPI, ContactAPI, MessageAPI
+from src.services.routers import AuthAPI, ContactAPI, MessageAPI
 
 class AdaptersProvider(Provider):
     @provide(scope=Scope.APP)
@@ -80,4 +79,5 @@ class ServicesProvider(Provider):
         return MessageAPI(
             logger=logger,
             auth_api=auth_api
+
         )
