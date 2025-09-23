@@ -2,11 +2,8 @@ from fastapi import APIRouter, HTTPException, status, Depends
 from dishka.integrations.fastapi import inject
 from dishka import FromDishka
 import logging
-import asyncio
-from typing import List, Optional
-from datetime import datetime, timedelta
-import json
-import redis
+from typing import List
+from datetime import datetime
 
 from ..models.message_api_models import *
 from src.core.gateways import MessageGateway
@@ -15,161 +12,44 @@ from .auth_api import AuthAPI
 
 class MessageAPI:
     """
-    Main class for message-related API endpoints.
-
-    Handles message sending, polling, delivery acknowledgment, and history retrieval.
-    Integrates with authentication and message persistence layers.
-
+    Simplified message API handler for direct database operations.
+    
+    Provides endpoints for sending messages, polling for new messages,
+    acknowledging delivery, and retrieving conversation history.
+    All operations work directly with the database without Redis caching.
+    
     Attributes:
         logger: Logger instance for tracking operations
         auth_api: Authentication API instance for user validation
         message_router: FastAPI router containing message endpoints
-        polling_interval: Time interval for checking new messages during polling
-        MESSAGE_CACHE_TTL: Time-to-live for messages in Redis cache (seconds)
-        _background_tasks: Set of background tasks for message management
+        polling_interval: Time interval between polling checks (seconds)
     """
 
     def __init__(
             self,
             logger: logging.Logger,
             auth_api: AuthAPI,
-            redis: redis.Redis
     ):
         self.logger = logger
         self.auth_api = auth_api
-        self.redis = redis
 
         self._message_router = APIRouter(tags=["Messages"])
         self._register_endpoints()
 
-        self.polling_interval = 3 # seconds
-        self.MESSAGE_CACHE_TTL = 60  # seconds
+        self.polling_interval = 3  # seconds
 
     @property
     def message_router(self) -> APIRouter:
+        """Get the FastAPI router with registered message endpoints."""
         return self._message_router
 
     def get_router(self) -> APIRouter:
+        """Get the FastAPI router (alias for message_router property)."""
         return self._message_router
 
-    async def _cache_message_in_redis(
-            self,
-            sender_id: int,
-            recipient_id: int,
-            message: bytes,
-    ) -> int:
-        """
-        Store message in Redis cache with automatic expiration.
-
-        Args:
-            sender_id: ID of the message sender
-            recipient_id: ID of the message recipient
-            message: Encrypted message content
-
-        Returns:
-            int: Generated message ID
-
-        Notes:
-            - Uses Redis pipeline for atomic operations
-            - Messages are stored with TTL for automatic cleanup
-            - Message IDs are added to recipient's message list
-        """
-        message_id = self.redis.incr("global:message_id")
-
-        message_data = {
-            "id": message_id,
-            "sender_id": sender_id,
-            "recipient_id": recipient_id,
-            "message": message.decode('utf-8'),
-            "timestamp": datetime.utcnow().isoformat(),
-            "is_delivered": False
-        }
-
-        pipe = self.redis.pipeline()
-        pipe.setex(
-            f"message:{message_id}",
-            timedelta(seconds=self.MESSAGE_CACHE_TTL),
-            json.dumps(message_data)
-        )
-        pipe.lpush(f"user:{recipient_id}:messages", message_id)
-        pipe.execute()
-
-        return message_id
-
-    async def _persist_message_to_db(
-            self,
-            message_gateway: MessageGateway,
-            sender_id: int,
-            recipient_id: int,
-            message: bytes,
-            message_id: int,
-    ) -> None:
-        """
-        Persist message from Redis to database storage.
-
-        Args:
-            message_gateway: Database gateway for message operations
-            sender_id: ID of the message sender
-            recipient_id: ID of the message recipient
-            message: Encrypted message content
-            message_id: Unique message identifier
-
-        Notes:
-            - Checks for duplicate messages before insertion
-            - Removes message from Redis after successful persistence
-            - Logs errors if database operation fails
-        """
-        try:
-            # Check if message already exists in DB to avoid duplicates
-            existing_message = await message_gateway.get_message_by_id(message_id)
-            if not existing_message:
-                await message_gateway.create_message(
-                    sender_id=sender_id,
-                    recipient_id=recipient_id,
-                    message=message
-                )
-            self.redis.delete(f"message:{message_id}")
-            self.redis.lrem(f"user:{recipient_id}:messages", 1, message_id)
-        except Exception as e:
-            self.logger.error(f"Failed to persist message to DB: {e}")
-
-    async def _get_messages_from_redis(
-            self,
-            user_id: int,
-    ) -> list[MessageResponse]:
-        """
-        Retrieve user's messages from Redis cache.
-
-        Args:
-            user_id: ID of the user whose messages to retrieve
-
-        Returns:
-            list[MessageResponse]: List of messages from Redis cache
-
-        Notes:
-            - Retrieves messages from user's message list
-            - Converts JSON data to MessageResponse objects
-            - Only returns messages that still exist in cache
-        """
-        message_ids = self.redis.lrange(f"user:{user_id}:messages", 0, -1)
-        messages = []
-
-        for msg_id in message_ids:
-            msg_data = self.redis.get(f"message:{msg_id}")
-            if msg_data:
-                msg_dict = json.loads(msg_data)
-                messages.append(MessageResponse(
-                    id=msg_dict['id'],
-                    sender_id=msg_dict['sender_id'],
-                    recipient_id=msg_dict['recipient_id'],
-                    message=msg_dict['message'].encode('utf-8'),
-                    timestamp=datetime.fromisoformat(msg_dict['timestamp']),
-                    is_delivered=msg_dict['is_delivered']
-                ))
-
-        return messages
-
     def _register_endpoints(self):
+        """Register all message-related API endpoints."""
+        
         @self.message_router.post("/send", status_code=status.HTTP_201_CREATED)
         @inject
         async def send_message(
@@ -179,41 +59,28 @@ class MessageAPI:
         ):
             """
             Send a new message to a recipient.
-
+            
             Args:
                 message_data: Message content and recipient information
                 message_gateway: Database gateway for message operations
                 token: JWT authentication token
-
+                
             Returns:
-                dict: Message ID and status
-
-            Flow:
-                1. Authenticate sender using JWT token
-                2. Cache message in Redis with automatic expiration
-                3. Initiate async persistence to database
+                dict: Message ID and status confirmation
+                
+            Raises:
+                HTTPException: If authentication fails
             """
             sender_id = await self.auth_api.get_current_user(token)
 
-            # First, save to Redis
-            message_id = await self._cache_message_in_redis(
-                sender_id,
-                message_data.recipient_id,
-                message_data.message
+            # Save message directly to database
+            message = await message_gateway.create_message(
+                sender_id=sender_id,
+                recipient_id=message_data.recipient_id,
+                message=message_data.message
             )
 
-            # Then we save it to the database asynchronously
-            asyncio.create_task(
-                self._persist_message_to_db(
-                    message_gateway,
-                    sender_id,
-                    message_data.recipient_id,
-                    message_data.message,
-                    message_id
-                )
-            )
-
-            return {"id": message_id, "status": "sent"}
+            return {"id": message.id, "status": "sent"}
 
         @self.message_router.get("/poll", response_model=PollingResponse)
         @inject
@@ -225,40 +92,34 @@ class MessageAPI:
         ):
             """
             Poll for new messages using long-polling approach.
-
+            
+            Checks for new messages at regular intervals until timeout is reached
+            or new messages are found.
+            
             Args:
                 message_gateway: Database gateway for message operations
                 last_message_id: ID of the last received message (for delta polling)
                 timeout: Maximum time to wait for new messages (seconds)
                 token: JWT authentication token
-
+                
             Returns:
                 PollingResponse: New messages and polling status
-
+                
             Notes:
-                - Checks both Redis cache and database for new messages
-                - Implements long-polling to reduce empty responses
-                - Returns immediately if new messages are available
+                - Uses long-polling to reduce empty responses
+                - Returns immediately when new messages are available
+                - Returns empty response after timeout if no new messages
             """
             user_id = await self.auth_api.get_current_user(token)
-            start_time = asyncio.get_event_loop().time()
+            start_time = datetime.utcnow()
 
-            while (asyncio.get_event_loop().time() - start_time) < timeout:
-                # Check Redis for new messages
-                redis_messages = await self._get_messages_from_redis(user_id)
-                # Filter to only include messages with ID > last_message_id
-                new_redis_messages = [m for m in redis_messages if m.id > last_message_id]
-
-                if new_redis_messages:
-                    return PollingResponse(
-                        has_messages=True,
-                        messages=new_redis_messages,
-                        last_message_id=max(m.id for m in new_redis_messages)
-                    )
-
-                # Check database for new messages
-                db_messages = await message_gateway.get_messages_after(user_id, last_message_id)
-                if db_messages:
+            # Poll for new messages until timeout
+            while (datetime.utcnow() - start_time).total_seconds() < timeout:
+                # Check database for new messages since last_message_id
+                new_messages = await message_gateway.get_messages_after(user_id, last_message_id)
+                
+                if new_messages:
+                    # Convert database models to response models
                     message_responses = [
                         MessageResponse(
                             id=msg.id,
@@ -267,16 +128,20 @@ class MessageAPI:
                             message=msg.message,
                             timestamp=msg.timestamp,
                             is_delivered=msg.is_delivered
-                        ) for msg in db_messages
+                        ) for msg in new_messages
                     ]
+                    
                     return PollingResponse(
                         has_messages=True,
                         messages=message_responses,
                         last_message_id=max(m.id for m in message_responses)
                     )
 
+                # Wait before next polling check
+                import asyncio
                 await asyncio.sleep(self.polling_interval)
 
+            # Return empty response if timeout reached
             return PollingResponse(has_messages=False)
 
         @self.message_router.post("/ack")
@@ -288,38 +153,34 @@ class MessageAPI:
         ):
             """
             Acknowledge delivery of messages.
-
+            
+            Marks specified messages as delivered in the database.
+            
             Args:
                 ack_data: List of message IDs to acknowledge
                 message_gateway: Database gateway for message operations
                 token: JWT authentication token
-
+                
             Returns:
                 dict: Acknowledgment status
-
-            Notes:
-                - Updates both Redis cache and database records
-                - Verifies user authorization for each message
-                - Marks messages as delivered in both storage systems
+                
+            Raises:
+                HTTPException: If user is not authorized to acknowledge messages
             """
             user_id = await self.auth_api.get_current_user(token)
 
             for msg_id in ack_data.message_ids:
-                # Check both Redis and database for the message
-                msg_data = self.redis.get(f"message:{msg_id}")
-                if msg_data:
-                    msg_dict = json.loads(msg_data)
-                    if msg_dict['recipient_id'] != user_id:
-                        raise HTTPException(status_code=403, detail="Not authorized")
-                    # Mark as delivered in Redis
-                    msg_dict['is_delivered'] = True
-                    self.redis.setex(f"message:{msg_id}", self.MESSAGE_CACHE_TTL, json.dumps(msg_dict))
-                else:
-                    # Check database
-                    message = await message_gateway.get_message_by_id(msg_id)
-                    if message and message.recipient_id != user_id:
-                        raise HTTPException(status_code=403, detail="Not authorized")
-                    await message_gateway.mark_as_delivered(msg_id)
+                # Verify message exists and user has permission to acknowledge it
+                message = await message_gateway.get_message_by_id(msg_id)
+                if not message:
+                    continue
+                    
+                # Check authorization - only recipient can acknowledge delivery
+                if message.recipient_id != user_id:
+                    raise HTTPException(status_code=403, detail="Not authorized")
+                    
+                # Mark message as delivered in database
+                await message_gateway.mark_as_delivered(msg_id)
 
             return {"status": "acknowledged"}
 
@@ -333,42 +194,25 @@ class MessageAPI:
         ):
             """
             Retrieve conversation history with another user.
-
+            
             Args:
                 message_gateway: Database gateway for message operations
                 other_user_id: ID of the conversation partner
                 limit: Maximum number of messages to return
                 token: JWT authentication token
-
+                
             Returns:
-                List[MessageResponse]: Conversation history messages
-
+                List[MessageResponse]: Conversation history messages, sorted by timestamp
+                
             Notes:
-                - Combines messages from both database and Redis cache
-                - Returns messages sorted by timestamp
-                - Respects authorization rules for message access
+                - Returns most recent messages up to the specified limit
+                - Includes messages in both directions of the conversation
             """
             user_id = await self.auth_api.get_current_user(token)
 
-            # Get history from database
-            db_history = await message_gateway.get_conversation_history(
+            # Retrieve conversation history from database
+            history = await message_gateway.get_conversation_history(
                 user_id, other_user_id, limit
             )
 
-            # Get messages from Redis for both directions of the conversation
-            redis_messages_user = await self._get_messages_from_redis(user_id)
-            redis_messages_other = await self._get_messages_from_redis(other_user_id)
-
-            # Filter Redis messages to only include relevant conversation
-            relevant_redis_messages = [
-                msg for msg in redis_messages_user + redis_messages_other
-                if (msg.sender_id == user_id and msg.recipient_id == other_user_id) or
-                               (msg.sender_id == other_user_id and msg.recipient_id == user_id)
-            ]
-
-            # Combine and sort all messages
-            all_messages = db_history + relevant_redis_messages
-            all_messages.sort(key=lambda x: x.timestamp)
-
-            # Return the most recent messages up to the limit
-            return all_messages[-limit:]
+            return history
