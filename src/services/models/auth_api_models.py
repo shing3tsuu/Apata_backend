@@ -12,8 +12,8 @@ class UserCreateDTO(BaseModel):
         return v
 
 class PublicKeyUpdateDTO(BaseModel):
-    ecdsa_public_key: str | None = None
-    ecdh_public_key: str | None = None
+    ecdsa_public_key: Optional[str] = None
+    ecdh_public_key: Optional[str] = None
 
     @validator('ecdsa_public_key', 'ecdh_public_key')
     def validate_public_key_format(cls, v):
@@ -24,7 +24,7 @@ class PublicKeyUpdateDTO(BaseModel):
 
 class UserRegisterRequest(UserCreateDTO):
     ecdsa_public_key: str
-    ecdh_public_key: str | None = None
+    ecdh_public_key: Optional[str] = None
 
     @validator('ecdsa_public_key')
     def validate_ecdsa_key(cls, v):
@@ -51,20 +51,16 @@ class ChallengeLoginRequest(BaseModel):
     username: str
     signature: str  # Base64-encoded signature
 
-class RefreshTokenRequest(BaseModel):
-    refresh_token: str
-
 class TokenResponse(BaseModel):
     access_token: str
-    refresh_token: str
     token_type: str = "bearer"
     expires_in: int
 
 class UserResponse(BaseModel):
     id: int
     name: str
-    ecdsa_public_key: str | None = None
-    ecdh_public_key: str | None = None
+    ecdsa_public_key: Optional[str] = None
+    ecdh_public_key: Optional[str] = None
 
     class Config:
         from_attributes = True
