@@ -12,8 +12,8 @@ class UserCreateDTO(BaseModel):
         return v
 
 class PublicKeyUpdateDTO(BaseModel):
-    ecdsa_public_key: Optional[str] = None
-    ecdh_public_key: Optional[str] = None
+    ecdsa_public_key: str | None = None
+    ecdh_public_key: str | None = None
 
     @validator('ecdsa_public_key', 'ecdh_public_key')
     def validate_public_key_format(cls, v):
@@ -24,7 +24,7 @@ class PublicKeyUpdateDTO(BaseModel):
 
 class UserRegisterRequest(UserCreateDTO):
     ecdsa_public_key: str
-    ecdh_public_key: Optional[str] = None
+    ecdh_public_key: str | None = None
 
     @validator('ecdsa_public_key')
     def validate_ecdsa_key(cls, v):
@@ -59,8 +59,8 @@ class TokenResponse(BaseModel):
 class UserResponse(BaseModel):
     id: int
     name: str
-    ecdsa_public_key: Optional[str] = None
-    ecdh_public_key: Optional[str] = None
+    ecdsa_public_key: str | None = None
+    ecdh_public_key: str | None = None
 
     class Config:
         from_attributes = True
