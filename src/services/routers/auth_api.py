@@ -521,7 +521,8 @@ class AuthAPI:
                 )
             return UserResponse(
                 id=user.id,
-                name=user.name,
+                username=user.name,
                 ecdsa_public_key=user.ecdsa_public_key,
                 ecdh_public_key=user.ecdh_public_key
             )
+
