@@ -58,7 +58,7 @@ class TokenResponse(BaseModel):
 
 class UserResponse(BaseModel):
     id: int
-    name: str
+    username: str
     ecdsa_public_key: str | None = None
     ecdh_public_key: str | None = None
 
@@ -74,3 +74,4 @@ class HealthResponse(BaseModel):
     timestamp: str
     service: str
     redis: str
+
