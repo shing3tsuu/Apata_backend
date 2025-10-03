@@ -98,9 +98,11 @@ class DatabaseManager(BaseDatabaseManager):
     async def initialize(self):
         self.engine = create_async_engine(
             url=f"postgresql+asyncpg://{self.config.db.user}:{self.config.db.password}@{self.config.db.host}:{self.config.db.port}/{self.config.db.name}",
-            pool_size=5,
-            max_overflow=10,
-            pool_pre_ping=True
+            pool_size=50,
+            pool_timeout=15,
+            pool_recycle=1500,
+            pool_pre_ping=True,
+            max_overflow=15,
         )
 
         self.session_factory = async_sessionmaker(
@@ -108,3 +110,4 @@ class DatabaseManager(BaseDatabaseManager):
             class_=AsyncSession,
             expire_on_commit=False,
         )
+
