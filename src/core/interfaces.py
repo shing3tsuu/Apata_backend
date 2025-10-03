@@ -170,6 +170,27 @@ class UserInterface(ABC):
 
 class MessageInterface(ABC):
     @abstractmethod
+    async def wait_for_undelivered_messages(self, user_id: int, timeout: int = 30) -> list[MessageDTO]:
+        """
+        Wait for unread messages using LISTEN/NOTIFY
+        :param user_id: User ID
+        :param timeout: Timeout in seconds
+        :return: Message list
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def create_message_and_notify(self, sender_id: int, recipient_id: int, message: bytes) -> MessageDTO:
+        """
+        Create a message and notify the recipient
+        :param sender_id: Sender ID
+        :param recipient_id: Recipient ID
+        :param message: Message
+        :return: Created message
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
     async def create_message(
             self,
             sender_id: int,
@@ -181,22 +202,6 @@ class MessageInterface(ABC):
         :param sender_id:
         :param recipient_id:
         :param message:
-        :return:
-        """
-        raise NotImplementedError()
-
-    @abstractmethod
-    async def get_messages_after(
-            self,
-            recipient_id: int,
-            last_message_id: int = 0,
-            limit: int = 100
-    ) -> list[MessageDTO]:
-        """
-        Gets messages after a certain ID.
-        :param recipient_id:
-        :param last_message_id:
-        :param limit:
         :return:
         """
         raise NotImplementedError()
@@ -233,22 +238,6 @@ class MessageInterface(ABC):
         """
         Gets a message by ID.
         :param message_id:
-        :return:
-        """
-        raise NotImplementedError()
-
-    @abstractmethod
-    async def get_conversation_history(
-            self,
-            user1_id: int,
-            user2_id: int,
-            limit: int = 100
-    ) -> list[MessageDTO]:
-        """
-        Gets the conversation history between two users.
-        :param user1_id:
-        :param user2_id:
-        :param limit:
         :return:
         """
         raise NotImplementedError()
