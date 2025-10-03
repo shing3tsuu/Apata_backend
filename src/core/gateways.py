@@ -254,6 +254,48 @@ class MessageGateway(MessageInterface):
         self._db_manager = db_manager
         self._logger = logger
 
+    async def wait_for_undelivered_messages(self, user_id: int, timeout: int = 30) -> list[MessageDTO]:
+        # First we check if there are any messages without waiting
+        messages = await self.get_undelivered_messages(user_id)
+        if messages:
+            return messages
+
+        # Waiting for notification from PostgreSQL
+        notified = await self._db_manager.wait_for_user_notification(user_id, timeout)
+        if notified:
+            # After notification, check messages again
+            return await self.get_undelivered_messages(user_id)
+
+        return []
+
+    async def create_message_and_notify(self, sender_id: int, recipient_id: int, message: bytes) -> MessageDTO:
+        async with self._db_manager.session() as session:
+            try:
+                # Create a message
+                stmt = insert(Message).values(
+                    sender_id=sender_id,
+                    recipient_id=recipient_id,
+                    message=message
+                ).returning(Message)
+                result = await session.execute(stmt)
+                msg = result.scalars().first()
+
+                # Notify the recipient
+                await self._db_manager.notify_user(recipient_id)
+
+                return MessageDTO(
+                    id=msg.id,
+                    sender_id=msg.sender_id,
+                    recipient_id=msg.recipient_id,
+                    message=msg.message,
+                    timestamp=msg.timestamp,
+                    is_delivered=msg.is_delivered
+                )
+
+            except Exception as e:
+                self._logger.error("Error creating message and notifying: %s", e)
+                raise
+
     async def create_message(self, sender_id: int, recipient_id: int, message: bytes)\
             -> MessageDTO:
         async with self._db_manager.session() as session:
@@ -278,36 +320,6 @@ class MessageGateway(MessageInterface):
             except Exception as e:
                 self._logger.error("Error creating message in database: %s", e)
                 raise
-
-    async def get_messages_after(
-            self,
-            recipient_id: int,
-            last_message_id: int = 0,
-            limit: int = 100
-    ) -> list[MessageDTO]:
-        async with self._db_manager.session() as session:
-            try:
-                stmt = select(Message).where(
-                    Message.id > last_message_id,
-                    Message.recipient_id == recipient_id
-                ).order_by(Message.id.asc()).limit(limit)
-
-                result = await session.execute(stmt)
-                messages = result.scalars().all()
-
-                return [
-                    MessageDTO(
-                        id=m.id,
-                        sender_id=m.sender_id,
-                        recipient_id=m.recipient_id,
-                        message=m.message,
-                        timestamp=m.timestamp,
-                        is_delivered=m.is_delivered
-                    ) for m in messages
-                ]
-            except Exception as e:
-                self._logger.error(f"Error getting messages after ID in database: {e}")
-                return []
 
     async def get_undelivered_messages(self, recipient_id: int) -> list[MessageDTO]:
         async with self._db_manager.session() as session:
@@ -369,27 +381,3 @@ class MessageGateway(MessageInterface):
             except Exception as e:
                 self._logger.error(f"Error getting message by ID in database: {e}")
                 return None
-
-    async def get_conversation_history(self, user1_id: int, user2_id: int, limit: int = 100) -> list[MessageDTO]:
-        async with self._db_manager.session() as session:
-            try:
-                stmt = select(Message).where(
-                    ((Message.sender_id == user1_id) & (Message.recipient_id == user2_id)) |
-                    ((Message.sender_id == user2_id) & (Message.recipient_id == user1_id))
-                ).order_by(Message.timestamp.desc()).limit(limit)
-
-                result = await session.execute(stmt)
-                messages = result.scalars().all()
-                return [
-                    MessageDTO(
-                        id=m.id,
-                        sender_id=m.sender_id,
-                        recipient_id=m.recipient_id,
-                        message=m.message,
-                        timestamp=m.timestamp,
-                        is_delivered=m.is_delivered
-                    ) for m in messages
-                ]
-            except Exception as e:
-                self._logger.error(f"Error getting conversation history in database: {e}")
-                return []
