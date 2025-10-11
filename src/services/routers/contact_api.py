@@ -34,6 +34,7 @@ class ContactAPI:
         logger: Logger instance for tracking operations
         contact_router: FastAPI router containing contact endpoints
     """
+
     def __init__(
             self,
             redis: redis.Redis,
@@ -54,33 +55,43 @@ class ContactAPI:
         return self._contact_router
 
     def _register_endpoints(self):
-        @self.contact_router.get("/get-users", response_model=list[UserContactResponse])
+        @self.contact_router.get("/search-users", response_model=list[UserContactResponse])
         @inject
-        async def get_users(username: str, user_gateway: FromDishka[UserGateway]):
-            """
-            Search for users by username.
-
-            Args:
-                username: Partial or complete username to search for
-                user_gateway: User persistence interface
-
-            Returns:
-                List of users matching the search criteria
-
-            Raises:
-                HTTPException: If no users are found
-            """
+        async def search_users(
+                username: str,
+                user_gateway: FromDishka[UserGateway]
+        ):
             users = await user_gateway.get_users_by_name(username)
             if not users:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail="User not found"
+                    detail="Users not found"
                 )
-
             return [
                 UserContactResponse(
                     id=user.id,
-                    name=user.name,
+                    username=user.name,
+                    ecdsa_public_key=user.ecdsa_public_key,
+                    ecdh_public_key=user.ecdh_public_key
+                ) for user in users
+            ]
+
+        @self.contact_router.get("/users-by-ids", response_model=list[UserContactResponse])
+        @inject
+        async def get_users_by_ids(
+                users_ids: list[int],
+                user_gateway: FromDishka[UserGateway]
+        ):
+            users = await user_gateway.get_users_by_ids(users_ids)
+            if not users:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Users not found"
+                )
+            return [
+                UserContactResponse(
+                    id=user.id,
+                    username=user.name,
                     ecdsa_public_key=user.ecdsa_public_key,
                     ecdh_public_key=user.ecdh_public_key
                 ) for user in users
