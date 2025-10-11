@@ -57,6 +57,29 @@ class UserInterface(ABC):
         raise NotImplementedError()
 
     @abstractmethod
+    async def get_contacts_by_user_id(self, user_id: int) -> list[ContactRequestDTO]:
+        """
+        Get contacts by user.id
+        :param user_id: 
+        :return: 
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def get_users_with_contact_status_by_ids(
+            self,
+            current_user_id: int,
+            user_ids: list[int]
+    ) -> list[UserWithContactStatusDTO]:
+        """
+        Get users by user.id with contact status relative to current_user_id.
+        :param current_user_id: the user who is making the request
+        :param user_ids: list of user ids to get
+        :return: list of UserWithContactStatusDTO
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
     async def add_contact_request(
             self,
             sender_id: int,
@@ -241,3 +264,4 @@ class MessageInterface(ABC):
         :return:
         """
         raise NotImplementedError()
+
