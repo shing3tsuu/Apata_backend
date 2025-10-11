@@ -15,6 +15,9 @@ class ContactRequestDTO(BaseModel):
     status: str
     created_at: datetime
 
+class UserWithContactStatusDTO(UserDTO):
+    status: str  # status: 'accepted', 'pending', 'rejected', 'none'
+
 class MessageDTO(BaseModel):
     id: int
     sender_id: int
