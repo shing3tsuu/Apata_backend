@@ -4,8 +4,9 @@ import enum
 
 
 class UserContactResponse(BaseModel):
-    name: str
-    ecdsa_public_key: str | None = None
+    id: int
+    username: str
+    status: str
     ecdh_public_key: str | None = None
 
 class SentContactRequest(BaseModel):
