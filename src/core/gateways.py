@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime, date, time
 
-from sqlalchemy import select, insert, update, delete, Integer
+from sqlalchemy import select, insert, update, delete, Integer, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from abc import ABC
 from functools import wraps
@@ -12,7 +12,7 @@ import logging
 
 from .database import User, ContactRequest, Message
 from .interfaces import UserInterface, MessageInterface
-from .dto import UserDTO, ContactRequestDTO, MessageDTO
+from .dto import UserDTO, ContactRequestDTO, UserWithContactStatusDTO, MessageDTO
 from src.config import load_config
 from .db_manager import DatabaseManager
 
@@ -62,6 +62,29 @@ class UserGateway(UserInterface):
                 self._logger.error(f"Error getting user by id in database: %s", e)
                 return None
 
+    async def get_users_by_ids(self, user_ids: list[int]) -> list[UserDTO]:
+        async with self._db_manager.session() as session:
+            try:
+                if not user_ids:
+                    return []
+
+                stmt = select(User).where(User.id.in_(user_ids))
+                result = await session.execute(stmt)
+                users = result.scalars().all()
+
+                return [
+                    UserDTO(
+                        id=user.id,
+                        name=user.name,
+                        ecdsa_public_key=user.ecdsa_public_key,
+                        ecdh_public_key=user.ecdh_public_key
+                    )
+                    for user in users
+                ]
+            except Exception as e:
+                self._logger.error(f"Error getting users by ids in database: %s", e)
+                return []
+
     async def get_user_by_name(self, name: str) -> UserDTO | None:
         async with self._db_manager.session() as session:
             try:
@@ -103,6 +126,90 @@ class UserGateway(UserInterface):
             except Exception as e:
                 self._logger.error("Error getting users by name in database: %s", e)
                 return None
+
+    async def get_contacts_by_user_id(self, user_id: int) -> list[ContactRequestDTO]:
+        async with self._db_manager.session() as session:
+            try:
+                stmt = select(ContactRequest).where(
+                    or_(
+                        and_(
+                            ContactRequest.sender_id == user_id,
+                        ),
+                        and_(
+                            ContactRequest.receiver_id == user_id
+                        )
+                    )
+                )
+                result = await session.execute(stmt)
+                contacts = result.scalars().all()
+
+                return [
+                    ContactRequestDTO(
+                        id=contact.id,
+                        sender_id=contact.sender_id,
+                        receiver_id=contact.receiver_id,
+                        status=contact.status,
+                        created_at=contact.created_at
+                    ) for contact in contacts
+                ]
+            except Exception as e:
+                self._logger.error(f"Error getting contacts by user id in database: {e}")
+                return []
+
+    async def get_users_with_contact_status_by_ids(
+            self,
+            current_user_id: int,
+            user_ids: list[int]
+    ) -> list[UserWithContactStatusDTO]:
+        async with self._db_manager.session() as session:
+            try:
+                if not user_ids:
+                    return []
+
+                stmt = select(User).where(User.id.in_(user_ids))
+                result = await session.execute(stmt)
+                users = result.scalars().all()
+
+                contact_stmt = select(ContactRequest).where(
+                    or_(
+                        and_(
+                            ContactRequest.sender_id == current_user_id,
+                            ContactRequest.receiver_id.in_(user_ids)
+                        ),
+                        and_(
+                            ContactRequest.sender_id.in_(user_ids),
+                            ContactRequest.receiver_id == current_user_id
+                        )
+                    )
+                )
+                contact_result = await session.execute(contact_stmt)
+                contacts = contact_result.scalars().all()
+
+                contact_dict = {}
+                for contact in contacts:
+                    if contact.sender_id == current_user_id:
+                        contact_dict[contact.receiver_id] = contact.status
+                    else:
+                        contact_dict[contact.sender_id] = contact.status
+
+                result_users = []
+                for user in users:
+                    status = contact_dict.get(user.id, 'none')
+                    result_users.append(
+                        UserWithContactStatusDTO(
+                            id=user.id,
+                            name=user.name,
+                            ecdsa_public_key=user.ecdsa_public_key,
+                            ecdh_public_key=user.ecdh_public_key,
+                            status=status
+                        )
+                    )
+
+                return result_users
+
+            except Exception as e:
+                self._logger.error(f"Error getting users with contact status by ids in database: {e}")
+                return []
 
     async def add_contact_request(self, sender_id: int, receiver_id: int, status: str) -> ContactRequestDTO:
         async with self._db_manager.session() as session:
