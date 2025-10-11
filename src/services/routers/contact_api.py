@@ -79,10 +79,26 @@ class ContactAPI:
         @self.contact_router.get("/users-by-ids", response_model=list[UserContactResponse])
         @inject
         async def get_users_by_ids(
-                users_ids: list[int],
+                users_ids: str,
+                current_user_id: int,
                 user_gateway: FromDishka[UserGateway]
         ):
-            users = await user_gateway.get_users_by_ids(users_ids)
+            # Convert comma-separated string to list of integers
+            try:
+                user_id_list = [int(user_id.strip()) for user_id in users_ids.split(',') if user_id.strip()]
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid user IDs format"
+                )
+
+            if not user_id_list:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="No user IDs provided"
+                )
+
+            users = await user_gateway.get_users_with_contact_status_by_ids(current_user_id, user_id_list)
             if not users:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -92,10 +108,27 @@ class ContactAPI:
                 UserContactResponse(
                     id=user.id,
                     username=user.name,
-                    ecdsa_public_key=user.ecdsa_public_key,
+                    status=user.status,
                     ecdh_public_key=user.ecdh_public_key
                 ) for user in users
             ]
+
+        @self.contact_router.get("/get-contacts", response_model=list[ContactRequestResponse])
+        @inject
+        async def get_contacts(user_id: int, user_gateway: FromDishka[UserGateway]):
+            contacts = await user_gateway.get_contacts_by_user_id(user_id)
+            if not contacts:
+                return []
+
+            else:
+                return [
+                    ContactRequestResponse(
+                        sender_id=contact.sender_id,
+                        receiver_id=contact.receiver_id,
+                        status=contact.status,
+                        created_at=contact.created_at
+                    ) for contact in contacts
+                ]
 
         @self.contact_router.post("/send-contact-request", status_code=status.HTTP_201_CREATED)
         @inject
