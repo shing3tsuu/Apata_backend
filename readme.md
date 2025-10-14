@@ -233,11 +233,5 @@ src/
 
     Open Pull Request
 
-⚠️ Disclaimer
 
-This is a security-critical application. Use in production only after thorough security audit and penetration testing. The developers are not responsible for any security breaches resulting from misuse or misconfiguration.
-
-🆘 Support
-
-For security issues, please contact the security team directly. For technical support, open an issue in the repository.
 
