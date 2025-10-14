@@ -1,7 +1,7 @@
 Zero-Knowledge End-to-End Encrypted Messenger - Router (server)
 
 A secure, privacy-focused messaging server that implements zero-knowledge architecture for end-to-end encrypted communications. This server handles authentication, contact management, and message delivery while maintaining user privacy through cryptographic protocols.
-🌟 Features
+
 🔐 Zero-Knowledge Authentication
 
     Cryptographic Challenge-Response: Users prove identity using ECDSA signatures without transmitting passwords
@@ -240,3 +240,4 @@ This is a security-critical application. Use in production only after thorough s
 🆘 Support
 
 For security issues, please contact the security team directly. For technical support, open an issue in the repository.
+
