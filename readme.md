@@ -215,11 +215,11 @@ The API provides comprehensive error responses:
 Code Structure
 
 src/
-├── core/          # Database and gateway layer
-├── services/      # API routers and business logic
-├── services/models/        # Pydantic models
-├── services/routers/       # FastAPI endpoints
-└── config.py      # Configuration management
+ ├── core/          # Database and gateway layer
+ ├── services/      # API routers and business logic
+ ├── services/models/        # Pydantic models
+ ├── services/routers/       # FastAPI endpoints
+ └── config.py      # Configuration management
 
 🤝 Contributing
 
@@ -232,6 +232,7 @@ src/
     Push to branch (git push origin feature/amazing-feature)
 
     Open Pull Request
+
 
 
 
